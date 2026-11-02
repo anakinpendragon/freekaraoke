@@ -141,7 +141,25 @@ jobs:
           $install = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /l*v install.log" -Wait -PassThru
           if ($install.ExitCode -ne 0) { Get-Content install.log -Tail 15 | ForEach-Object { Write-Output "::error title=Instalação::$_" }; exit 1 }
           $exe = "$env:ProgramFiles\FreeKaraoke\FreeKaraoke.exe"
-          if (-not (Test-Path $exe)) { Write-Output "::error::O programa não foi instalado em $exe"; exit 1 }
+          if (-not (Test-Path $exe)) {
+            Write-Output "::error::O programa não foi instalado em $exe"
+            $found = Get-ChildItem "$env:ProgramFiles", "${env:ProgramFiles(x86)}", "$env:LOCALAPPDATA\Programs" -Recurse -Filter FreeKaraoke.exe -ErrorAction SilentlyContinue | ForEach-Object FullName
+            Write-Output "::error title=Encontrado em::$found"
+            $installer = New-Object -ComObject WindowsInstaller.Installer
+            $database = $installer.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $installer, @($msi, 0))
+            foreach ($query in "SELECT Directory, Directory_Parent, DefaultDir FROM Directory", "SELECT File, FileName FROM File") {
+              $view = $database.GetType().InvokeMember("OpenView", "InvokeMethod", $null, $database, @($query))
+              $view.GetType().InvokeMember("Execute", "InvokeMethod", $null, $view, $null)
+              $rows = @()
+              while ($record = $view.GetType().InvokeMember("Fetch", "InvokeMethod", $null, $view, $null)) {
+                $fields = 1..$record.GetType().InvokeMember("FieldCount", "GetProperty", $null, $record, $null) | ForEach-Object { $record.GetType().InvokeMember("StringData", "GetProperty", $null, $record, @($_)) }
+                $rows += ($fields -join "/")
+              }
+              Write-Output "::error title=MSI $($rows.Count) linhas::$(($rows | Select-Object -First 25) -join ' ; ')"
+            }
+            Select-String -Path install.log -Pattern 'INSTALLFOLDER|Note: 1: |Return value 3|ProductCode =' | Select-Object -First 8 | ForEach-Object { Write-Output "::error title=Log::$($_.Line)" }
+            exit 1
+          }
           $shortcut = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\FreeKaraoke.lnk"
           if (-not (Test-Path $shortcut)) { Write-Output "::error::O atalho não foi criado no menu Iniciar"; exit 1 }
           $version = (Get-Item $exe).VersionInfo
