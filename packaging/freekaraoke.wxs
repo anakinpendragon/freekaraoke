@@ -14,10 +14,6 @@
       <Directory Id="INSTALLFOLDER" Name="FreeKaraoke" />
     </StandardDirectory>
 
-    <ComponentGroup Id="ProgramFiles" Directory="INSTALLFOLDER">
-      <Files Include="!(bindpath.App)\**" />
-    </ComponentGroup>
-
     <StandardDirectory Id="ProgramMenuFolder">
       <Component Id="StartMenuShortcut" Guid="B8F3C2D4-6A1E-4F07-8C39-1D5E7A9B0C42">
         <Shortcut Id="FreeKaraokeShortcut" Name="FreeKaraoke" Description="Karaoke player"

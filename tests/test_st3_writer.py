@@ -136,3 +136,58 @@ def test_cli_creates_st3_by_default_and_honours_kar_option(score, tmp_path, caps
     other = tmp_path / "x.kar"
     assert main([str(score), str(other)]) == 0
     assert mido.MidiFile(str(other)).type == 1
+
+
+def test_msi_file_list_keeps_every_file_in_its_folder(tmp_path):
+    import importlib.util
+    import xml.etree.ElementTree as tree
+
+    specification = importlib.util.spec_from_file_location(
+        "make_msi_files", Path(__file__).resolve().parent.parent / "packaging" / "make_msi_files.py"
+    )
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+
+    program = tmp_path / "FreeKaraoke"
+    for relative in ("FreeKaraoke.exe", "_internal/a & b.dll", "_internal/fonts/x.ttf", "_internal/Qt/plugins/p.dll"):
+        path = program / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+
+    root = tree.fromstring(module.describe(program))
+    namespace = {"w": "http://wixtoolset.org/schemas/v4/wxs"}
+    parents = {}
+
+    def walk(element, prefix):
+        for directory in element.findall("w:Directory", namespace):
+            parents[directory.get("Id")] = prefix / directory.get("Name")
+            walk(directory, prefix / directory.get("Name"))
+
+    walk(root.find(".//w:DirectoryRef", namespace), Path("."))
+    parents["INSTALLFOLDER"] = Path(".")
+    installed = {
+        parents[component.get("Directory")] / Path(component.find("w:File", namespace).get("Source")).name
+        for component in root.findall(".//w:Component", namespace)
+    }
+
+    assert installed == {
+        Path("FreeKaraoke.exe"),
+        Path("_internal/a & b.dll"),
+        Path("_internal/fonts/x.ttf"),
+        Path("_internal/Qt/plugins/p.dll"),
+    }
+    assert all(component.find("w:File", namespace).get("KeyPath") == "yes" for component in root.findall(".//w:Component", namespace))
+    identifiers = [component.get("Id") for component in root.findall(".//w:Component", namespace)]
+    assert len(identifiers) == len(set(identifiers))
+
+
+def test_msi_file_list_refuses_an_empty_program(tmp_path):
+    import importlib.util
+
+    specification = importlib.util.spec_from_file_location(
+        "make_msi_files", Path(__file__).resolve().parent.parent / "packaging" / "make_msi_files.py"
+    )
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    with pytest.raises(SystemExit):
+        module.describe(tmp_path)

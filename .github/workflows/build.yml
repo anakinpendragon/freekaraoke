@@ -134,7 +134,12 @@ jobs:
       - name: Gerar o instalador MSI
         run: |
           dotnet tool install --global wix --version 5.0.2
-          wix build packaging\freekaraoke.wxs -arch x64 -d "Version=$env:FREEKARAOKE_VERSION" -bindpath "App=dist\FreeKaraoke" -o dist\FreeKaraoke-windows-x64.msi
+          python packaging\make_msi_files.py dist\FreeKaraoke build\msi-files.wxs
+          wix build packaging\freekaraoke.wxs build\msi-files.wxs -arch x64 -d "Version=$env:FREEKARAOKE_VERSION" -o dist\FreeKaraoke-windows-x64.msi
+          $megabytes = [math]::Round((Get-Item dist\FreeKaraoke-windows-x64.msi).Length / 1MB)
+          Write-Output "::notice title=MSI::$megabytes MB"
+          # The SoundFont alone is about 140 MB, even compressed: less means files are missing.
+          if ($megabytes -lt 100) { Write-Output "::error::O MSI ficou pequeno demais: $megabytes MB"; exit 1 }
       - name: Instalar, testar e desinstalar o MSI
         run: |
           $msi = (Resolve-Path dist\FreeKaraoke-windows-x64.msi).Path
@@ -143,21 +148,7 @@ jobs:
           $exe = "$env:ProgramFiles\FreeKaraoke\FreeKaraoke.exe"
           if (-not (Test-Path $exe)) {
             Write-Output "::error::O programa não foi instalado em $exe"
-            $found = Get-ChildItem "$env:ProgramFiles", "${env:ProgramFiles(x86)}", "$env:LOCALAPPDATA\Programs" -Recurse -Filter FreeKaraoke.exe -ErrorAction SilentlyContinue | ForEach-Object FullName
-            Write-Output "::error title=Encontrado em::$found"
-            $installer = New-Object -ComObject WindowsInstaller.Installer
-            $database = $installer.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $installer, @($msi, 0))
-            foreach ($query in "SELECT Directory, Directory_Parent, DefaultDir FROM Directory", "SELECT File, FileName FROM File") {
-              $view = $database.GetType().InvokeMember("OpenView", "InvokeMethod", $null, $database, @($query))
-              $view.GetType().InvokeMember("Execute", "InvokeMethod", $null, $view, $null)
-              $rows = @()
-              while ($record = $view.GetType().InvokeMember("Fetch", "InvokeMethod", $null, $view, $null)) {
-                $fields = 1..$record.GetType().InvokeMember("FieldCount", "GetProperty", $null, $record, $null) | ForEach-Object { $record.GetType().InvokeMember("StringData", "GetProperty", $null, $record, @($_)) }
-                $rows += ($fields -join "/")
-              }
-              Write-Output "::error title=MSI $($rows.Count) linhas::$(($rows | Select-Object -First 25) -join ' ; ')"
-            }
-            Select-String -Path install.log -Pattern 'INSTALLFOLDER|Note: 1: |Return value 3|ProductCode =' | Select-Object -First 8 | ForEach-Object { Write-Output "::error title=Log::$($_.Line)" }
+            Select-String -Path install.log -Pattern 'Return value 3|INSTALLFOLDER =|ProductCode =' | Select-Object -First 6 | ForEach-Object { Write-Output "::error title=Log::$($_.Line)" }
             exit 1
           }
           $shortcut = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\FreeKaraoke.lnk"
