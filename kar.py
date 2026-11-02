@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from i18n import tr
+
 import contextlib
 import io
 import tempfile
@@ -70,12 +72,11 @@ def load_source(path: Path) -> Song:
     elif suffix in MIDI_SUFFIXES:
         song = _read_midi(path)
     else:
-        raise ConversionError(f"Formato não suportado: {suffix or 'sem extensão'}")
+        raise ConversionError(tr("Formato não suportado: {0}").format(suffix or tr('sem extensão')))
 
     if not song.syllables:
         raise ConversionError(
-            "O arquivo não tem letra. Baixe o MusicXML de uma partitura com letra "
-            "ou use um MIDI que contenha eventos de letra."
+            tr("O arquivo não tem letra. Baixe o MusicXML de uma partitura com letra ou use um MIDI que contenha eventos de letra.")
         )
     return song
 
@@ -89,9 +90,9 @@ def read_musicxml(path: Path) -> Song:
     try:
         score = music21.converter.parse(str(path))
     except Exception as exc:  # music21 raises many unrelated types on bad input
-        raise ConversionError(f"Não consegui ler o MusicXML: {exc}") from exc
+        raise ConversionError(tr("Não consegui ler o MusicXML: {0}").format(exc)) from exc
     if not isinstance(score, music21.stream.Score):
-        raise ConversionError("O MusicXML não contém uma partitura completa.")
+        raise ConversionError(tr("O MusicXML não contém uma partitura completa."))
 
     _merge_split_endings(score, music21)
     try:
@@ -106,7 +107,7 @@ def read_musicxml(path: Path) -> Song:
             expanded.write("midi", fp=str(midi_path))
             midi = _with_resolution(mido.MidiFile(str(midi_path)), OUTPUT_TICKS_PER_BEAT)
     except Exception as exc:  # music21 raises many unrelated types on unusual scores
-        raise ConversionError(f"Não consegui preparar a música dessa partitura: {exc}") from exc
+        raise ConversionError(tr("Não consegui preparar a música dessa partitura: {0}").format(exc)) from exc
 
     metadata = score.metadata
     return Song(
@@ -215,7 +216,7 @@ def _read_midi(path: Path) -> Song:
     try:
         midi = mido.MidiFile(str(path), charset="latin1")
     except Exception as exc:  # mido raises several types on corrupt files
-        raise ConversionError(f"Não consegui ler o MIDI: {exc}") from exc
+        raise ConversionError(tr("Não consegui ler o MIDI: {0}").format(exc)) from exc
 
     syllables = _midi_syllables(midi, "lyrics") or _midi_syllables(midi, "text")
     return Song(midi=midi, syllables=syllables)

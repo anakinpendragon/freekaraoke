@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from i18n import tr
+
 import io
 import re
 import tempfile
@@ -19,6 +21,7 @@ MUSESCORE_URL = re.compile(
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
+app.jinja_env.globals["tr"] = tr
 
 
 @app.get("/")
@@ -31,17 +34,17 @@ def converter():
     url = request.form.get("url", "").strip()
     match = MUSESCORE_URL.match(url)
     if url and not match:
-        return _page("A URL não parece ser de uma partitura do MuseScore.", 400)
+        return _page(tr("A URL não parece ser de uma partitura do MuseScore."), 400)
 
     upload = request.files.get("arquivo")
     if upload is None or not upload.filename:
-        return _page("Envie o arquivo MIDI ou MusicXML da partitura.", 400)
+        return _page(tr("Envie o arquivo MIDI ou MusicXML da partitura."), 400)
     suffix = Path(upload.filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
-        return _page(f"Formato não suportado: {suffix or 'sem extensão'}.", 400)
+        return _page(tr("Formato não suportado: {0}.").format(suffix or tr('sem extensão')), 400)
     output_format = request.form.get("formato", DEFAULT_FORMAT)
     if output_format not in FORMATS:
-        return _page("Formato de saída inválido.", 400)
+        return _page(tr("Formato de saída inválido."), 400)
 
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / f"entrada{suffix}"
@@ -68,7 +71,7 @@ def converter():
 
 @app.errorhandler(413)
 def too_large(_error):
-    return _page("Arquivo muito grande (máximo de 20 MB).", 413)
+    return _page(tr("Arquivo muito grande (máximo de 20 MB)."), 413)
 
 
 def _page(error: str | None = None, status: int = 200):

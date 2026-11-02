@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from i18n import LANGUAGE, PORTUGUESE, tr
+
 import math
 import os
 import shutil
@@ -10,7 +12,20 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QMargins, QPoint, QPointF, QRectF, QSettings, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import (
+    QLibraryInfo,
+    QLocale,
+    QMargins,
+    QPoint,
+    QPointF,
+    QRectF,
+    QSettings,
+    Qt,
+    QTimer,
+    QTranslator,
+    QUrl,
+    Signal,
+)
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -77,8 +92,7 @@ TEMPO_STEP = 0.05
 TEMPO_MIN = 0.5
 TEMPO_MAX = 1.5
 FILE_FILTER = (
-    "Músicas de karaokê (*.st3 *.ST3 *.St3 *.kar *.KAR *.mid *.MID *.midi *.musicxml *.mxl *.xml);;"
-    "Todos os arquivos (*)"
+    tr("Músicas de karaokê (*.st3 *.ST3 *.St3 *.kar *.KAR *.mid *.MID *.midi *.musicxml *.mxl *.xml);;Todos os arquivos (*)")
 )
 
 BACKGROUND = QColor("#10131a")
@@ -102,7 +116,7 @@ MAX_FONT_SIZE = 200
 FONT_SIZE_STEP = 4
 LINE_SPACING = 1.1
 BOTTOM_MARGIN = 0.05
-ALL_SINGERS = "Todos os cantores"
+ALL_SINGERS = tr("Todos os cantores")
 ICON_PATH = Path(__file__).resolve().parent / "icons" / "freekaraoke.png"
 # Saved to $XDG_CONFIG_HOME/freekaraoke/freekaraoke.ini, normally under ~/.config.
 SETTINGS_DIRECTORY = "freekaraoke"
@@ -232,7 +246,7 @@ class LyricWidget(QWidget):
         number_font = QFont(DEFAULT_FONT_FAMILY, SCORE_FONT_SIZE)
         number_font.setBold(True)
         for text, font, baseline, colour in (
-            ("Sua nota", label_font, center_y - QFontMetricsF(number_font).height() / 2, UNSUNG),
+            (tr("Sua nota"), label_font, center_y - QFontMetricsF(number_font).height() / 2, UNSUNG),
             (str(self._score), number_font, center_y + QFontMetricsF(number_font).height() / 2, SUNG),
         ):
             metrics = QFontMetricsF(font)
@@ -394,7 +408,7 @@ class QueueList(QListWidget):
 class PlayerWindow(QMainWindow):
     def __init__(self, soundfont: str | None = None, *, realtime: bool = True, gain: float | None = None):
         super().__init__()
-        self.setWindowTitle("Videokê")
+        self.setWindowTitle(tr("Videokê"))
         self.setWindowIcon(QIcon(str(ICON_PATH)))
         self.resize(1000, 650)
         self._settings = open_settings()
@@ -449,7 +463,7 @@ class PlayerWindow(QMainWindow):
         self._restore_settings()
 
     def _build_ui(self) -> None:
-        self._title = QLabel("Digite o número da música e tecle Enter, ou clique em Músicas")
+        self._title = QLabel(tr("Digite o número da música e tecle Enter, ou clique em Músicas"))
         self._title.setObjectName("songTitle")
         self._title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._lyrics = LyricWidget()
@@ -457,28 +471,28 @@ class PlayerWindow(QMainWindow):
         self._play_button = QPushButton()
         self._play_button.setObjectName("primaryButton")
         self._play_button.clicked.connect(self.toggle_play)
-        self._stop_button = QPushButton("Parar")
+        self._stop_button = QPushButton(tr("Parar"))
         self._stop_button.clicked.connect(self.stop)
-        self._next_button = QPushButton("Próxima")
+        self._next_button = QPushButton(tr("Próxima"))
         self._next_button.clicked.connect(self.play_next)
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.sliderPressed.connect(self._begin_seek)
         self._slider.sliderReleased.connect(self._end_seek)
         self._slider.sliderMoved.connect(self._preview_seek)
         self._time = QLabel("0:00 / 0:00")
-        self._slower_button = QPushButton("Tempo −")
+        self._slower_button = QPushButton(tr("Tempo −"))
         self._slower_button.clicked.connect(lambda: self.change_tempo(-TEMPO_STEP))
         self._tempo_label = QLabel("100%")
-        self._faster_button = QPushButton("Tempo +")
+        self._faster_button = QPushButton(tr("Tempo +"))
         self._faster_button.clicked.connect(lambda: self.change_tempo(TEMPO_STEP))
 
-        self._songs_button = QPushButton(QIcon(str(ICON_PATH)), "Músicas")
+        self._songs_button = QPushButton(QIcon(str(ICON_PATH)), tr("Músicas"))
         self._songs_button.clicked.connect(self.show_song_window)
 
         self._volume_slider = QSlider(Qt.Orientation.Horizontal)
         self._volume_slider.setRange(0, 100)
         self._volume_slider.setFixedWidth(140)
-        self._volume_slider.setToolTip("Volume (↑ e ↓)")
+        self._volume_slider.setToolTip(tr("Volume (↑ e ↓)"))
         self._volume_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._volume_label = QLabel()
         self._volume_label.setMinimumWidth(40)
@@ -548,16 +562,16 @@ class PlayerWindow(QMainWindow):
 
     def _build_song_window(self) -> QDialog:
         self._number_input = QLineEdit()
-        self._number_input.setPlaceholderText("Número da música")
+        self._number_input.setPlaceholderText(tr("Número da música"))
         self._number_input.returnPressed.connect(self.queue_typed_number)
-        number_button = QPushButton("Adicionar")
+        number_button = QPushButton(tr("Adicionar"))
         number_button.clicked.connect(self.queue_typed_number)
         number_row = QHBoxLayout()
         number_row.addWidget(self._number_input, 1)
         number_row.addWidget(number_button)
 
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Buscar pelo nome")
+        self._search_input.setPlaceholderText(tr("Buscar pelo nome"))
         self._search_input.textChanged.connect(lambda _text: self._apply_catalog_filter())
 
         self._singer_filter = QComboBox()
@@ -572,17 +586,17 @@ class PlayerWindow(QMainWindow):
         self._catalog_list.itemDoubleClicked.connect(lambda _item: self.queue_selected())
         self._catalog_list.setDragEnabled(True)
         self._catalog_list.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
-        add_button = QPushButton("Adicionar à fila")
+        add_button = QPushButton(tr("Adicionar à fila"))
         add_button.clicked.connect(self.queue_selected)
 
         self._queue_list = QueueList(self._catalog_list)
         self._queue_list.setMinimumHeight(170)
         self._queue_list.catalog_row_dropped.connect(self._on_catalog_song_dropped)
         self._queue_list.row_moved.connect(self.move_in_queue)
-        self._play_queue_button = QPushButton("Tocar a fila")
+        self._play_queue_button = QPushButton(tr("Tocar a fila"))
         self._play_queue_button.clicked.connect(self.play_queue)
-        remove_button = QPushButton("Remover da fila")
-        export_button = QPushButton("Abrir lista em PDF")
+        remove_button = QPushButton(tr("Remover da fila"))
+        export_button = QPushButton(tr("Abrir lista em PDF"))
         export_button.clicked.connect(self.open_song_list_pdf)
         remove_button.clicked.connect(self.remove_selected_from_queue)
         QShortcut(
@@ -592,7 +606,7 @@ class PlayerWindow(QMainWindow):
             context=Qt.ShortcutContext.WidgetShortcut,
         )
 
-        self._catalog_label = QLabel("Músicas: escolha a pasta em Opções")
+        self._catalog_label = QLabel(tr("Músicas: escolha a pasta em Opções"))
         self._song_message = QLabel()
         self._song_message.setWordWrap(True)
         panel_layout = QVBoxLayout()
@@ -602,7 +616,7 @@ class PlayerWindow(QMainWindow):
         panel_layout.addWidget(self._search_input)
         panel_layout.addWidget(self._catalog_list, 3)
         panel_layout.addWidget(add_button)
-        panel_layout.addWidget(QLabel("Fila (arraste para mudar a ordem)"))
+        panel_layout.addWidget(QLabel(tr("Fila (arraste para mudar a ordem)")))
         panel_layout.addWidget(self._queue_list, 1)
         queue_buttons = QHBoxLayout()
         queue_buttons.addWidget(self._play_queue_button)
@@ -614,7 +628,7 @@ class PlayerWindow(QMainWindow):
         for button in (number_button, add_button, remove_button, self._play_queue_button, export_button):
             button.setAutoDefault(False)
         dialog = QDialog(self)
-        dialog.setWindowTitle("Músicas e fila")
+        dialog.setWindowTitle(tr("Músicas e fila"))
         dialog.setLayout(panel_layout)
         dialog.resize(500, 780)
         return dialog
@@ -622,33 +636,33 @@ class PlayerWindow(QMainWindow):
     def _build_menus(self) -> None:
         menu_bar = self.menuBar()
 
-        file_menu = menu_bar.addMenu("&Arquivo")
-        self._add_action(file_menu, "Abrir música...", self.choose_file, QKeySequence.StandardKey.Open)
-        self._add_action(file_menu, "Abrir lista de músicas em PDF", self.open_song_list_pdf)
-        self._add_action(file_menu, "Salvar uma cópia da lista em PDF...", self.choose_pdf_file)
-        self._add_action(file_menu, "Sair", self.close, QKeySequence.StandardKey.Quit)
+        file_menu = menu_bar.addMenu(tr("&Arquivo"))
+        self._add_action(file_menu, tr("Abrir música..."), self.choose_file, QKeySequence.StandardKey.Open)
+        self._add_action(file_menu, tr("Abrir lista de músicas em PDF"), self.open_song_list_pdf)
+        self._add_action(file_menu, tr("Salvar uma cópia da lista em PDF..."), self.choose_pdf_file)
+        self._add_action(file_menu, tr("Sair"), self.close, QKeySequence.StandardKey.Quit)
 
-        view_menu = menu_bar.addMenu("&Exibir")
-        self._add_action(view_menu, "Músicas e fila (F2)", self.show_song_window)
-        self._add_action(view_menu, "Tela cheia (F11; Esc para sair)", self.toggle_fullscreen)
-        self._add_action(view_menu, "Alternar modo claro e escuro", self.toggle_theme)
+        view_menu = menu_bar.addMenu(tr("&Exibir"))
+        self._add_action(view_menu, tr("Músicas e fila (F2)"), self.show_song_window)
+        self._add_action(view_menu, tr("Tela cheia (F11; Esc para sair)"), self.toggle_fullscreen)
+        self._add_action(view_menu, tr("Alternar modo claro e escuro"), self.toggle_theme)
         view_menu.addSeparator()
-        self._add_action(view_menu, "Tamanho da letra dos menus...", self.choose_interface_font_size)
-        self._add_action(view_menu, "Usar o tamanho de letra do sistema", lambda: self.set_interface_font_size(None))
+        self._add_action(view_menu, tr("Tamanho da letra dos menus..."), self.choose_interface_font_size)
+        self._add_action(view_menu, tr("Usar o tamanho de letra do sistema"), lambda: self.set_interface_font_size(None))
 
-        lyrics_menu = menu_bar.addMenu("&Letra")
-        self._add_action(lyrics_menu, "Fonte e tamanho...", self.choose_font)
-        self._add_action(lyrics_menu, "Aumentar fonte (Ctrl +)", lambda: self.change_font_size(FONT_SIZE_STEP))
-        self._add_action(lyrics_menu, "Diminuir fonte (Ctrl -)", lambda: self.change_font_size(-FONT_SIZE_STEP))
-        self._add_action(lyrics_menu, "Restaurar fonte padrão", self.reset_font)
+        lyrics_menu = menu_bar.addMenu(tr("&Letra"))
+        self._add_action(lyrics_menu, tr("Fonte e tamanho..."), self.choose_font)
+        self._add_action(lyrics_menu, tr("Aumentar fonte (Ctrl +)"), lambda: self.change_font_size(FONT_SIZE_STEP))
+        self._add_action(lyrics_menu, tr("Diminuir fonte (Ctrl -)"), lambda: self.change_font_size(-FONT_SIZE_STEP))
+        self._add_action(lyrics_menu, tr("Restaurar fonte padrão"), self.reset_font)
 
-        options_menu = menu_bar.addMenu("&Opções")
-        self._add_action(options_menu, "Pasta das músicas...", self.choose_song_folder)
-        self._add_action(options_menu, "Atualizar lista de músicas (F5)", self.refresh_song_folder)
-        self._add_action(options_menu, "Pasta de imagens e vídeos...", self.choose_background_folder)
-        self._add_action(options_menu, "Tirar imagens e vídeos", self.clear_background_folder)
+        options_menu = menu_bar.addMenu(tr("&Opções"))
+        self._add_action(options_menu, tr("Pasta das músicas..."), self.choose_song_folder)
+        self._add_action(options_menu, tr("Atualizar lista de músicas (F5)"), self.refresh_song_folder)
+        self._add_action(options_menu, tr("Pasta de imagens e vídeos..."), self.choose_background_folder)
+        self._add_action(options_menu, tr("Tirar imagens e vídeos"), self.clear_background_folder)
         options_menu.addSeparator()
-        self._score_action = QAction("Dar nota pelo microfone", self)
+        self._score_action = QAction(tr("Dar nota pelo microfone"), self)
         self._score_action.setCheckable(True)
         self._score_action.setChecked(self._settings.value("score_enabled", "true") == "true")
         self._score_action.toggled.connect(self._on_score_option_toggled)
@@ -682,7 +696,7 @@ class PlayerWindow(QMainWindow):
 
     def choose_song_folder(self) -> None:
         start = self._settings.value("song_folder", str(Path.home()))
-        folder = QFileDialog.getExistingDirectory(self, "Pasta das músicas", start)
+        folder = QFileDialog.getExistingDirectory(self, tr("Pasta das músicas"), start)
         if folder:
             self.set_song_folder(folder)
 
@@ -695,7 +709,7 @@ class PlayerWindow(QMainWindow):
             self._catalog = self._library.sync(folder)
         except (sqlite3.Error, OSError) as exc:
             self._catalog = []
-            self._show_error(f"Não consegui ler o banco de músicas: {exc}")
+            self._show_error(tr("Não consegui ler o banco de músicas: {0}").format(exc))
         self._entries_by_number = {entry.number: entry for entry in self._catalog}
         self._catalog_list.clear()
         for entry in self._catalog:
@@ -729,9 +743,9 @@ class PlayerWindow(QMainWindow):
             self._library.mark_pdf_current()
         except (OSError, sqlite3.Error) as exc:
             temporary.unlink(missing_ok=True)
-            self._notify(f"Não consegui gerar a lista em PDF: {exc}")
+            self._notify(tr("Não consegui gerar a lista em PDF: {0}").format(exc))
             return
-        self._notify("Lista de músicas em PDF atualizada.")
+        self._notify(tr("Lista de músicas em PDF atualizada."))
 
     def _apply_catalog_filter(self) -> None:
         wanted_name = self._search_input.text().casefold().strip()
@@ -749,7 +763,7 @@ class PlayerWindow(QMainWindow):
             self._catalog_list.setRowHidden(row, not visible)
             shown += visible
         total = len(self._catalog)
-        self._catalog_label.setText(f"Músicas: {total}" if shown == total else f"Músicas: {shown} de {total}")
+        self._catalog_label.setText(tr("Músicas: {0}").format(total) if shown == total else tr("Músicas: {0} de {1}").format(shown, total))
 
     def show_song_window(self) -> None:
         self._song_window.show()
@@ -788,7 +802,7 @@ class PlayerWindow(QMainWindow):
             super().keyPressEvent(event)
 
     def _show_typed_number(self) -> None:
-        self._lyrics.set_notice(f"Música nº {self._typed_number}")
+        self._lyrics.set_notice(tr("Música nº {0}").format(self._typed_number))
         self._notice_timer.start(TYPED_NUMBER_MS)
 
     def queue_typed_number(self) -> None:
@@ -799,7 +813,7 @@ class PlayerWindow(QMainWindow):
     def _queue_number(self, text: str) -> bool:
         entry = self._entry_by_number(text)
         if entry is None:
-            self._notify(f"Não existe música com o número {text}.")
+            self._notify(tr("Não existe música com o número {0}.").format(text))
             return False
         self.add_to_queue(entry)
         return True
@@ -807,16 +821,16 @@ class PlayerWindow(QMainWindow):
     def open_song_list_pdf(self) -> None:
         path = self.song_list_pdf_path()
         if not path.is_file():
-            self._notify("Escolha antes a pasta das músicas em Opções.")
+            self._notify(tr("Escolha antes a pasta das músicas em Opções."))
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def choose_pdf_file(self) -> None:
         if not self.song_list_pdf_path().is_file():
-            self._notify("Escolha antes a pasta das músicas em Opções.")
+            self._notify(tr("Escolha antes a pasta das músicas em Opções."))
             return
         start = str(Path.home() / SONG_LIST_PDF)
-        path, _ = QFileDialog.getSaveFileName(self, "Salvar uma cópia da lista", start, "PDF (*.pdf)")
+        path, _ = QFileDialog.getSaveFileName(self, tr("Salvar uma cópia da lista"), start, "PDF (*.pdf)")
         if path:
             self.export_pdf(path if path.lower().endswith(".pdf") else f"{path}.pdf")
 
@@ -824,9 +838,9 @@ class PlayerWindow(QMainWindow):
         try:
             shutil.copyfile(self.song_list_pdf_path(), path)
         except OSError as exc:
-            self._show_error(f"Não consegui salvar a lista: {exc.strerror or exc}")
+            self._show_error(tr("Não consegui salvar a lista: {0}").format(exc.strerror or exc))
             return
-        self._notify(f"Lista salva: {path}")
+        self._notify(tr("Lista salva: {0}").format(path))
 
     def _entry_by_number(self, text: str) -> CatalogEntry | None:
         return self._entries_by_number.get(int(text)) if text.isdecimal() else None
@@ -834,22 +848,22 @@ class PlayerWindow(QMainWindow):
     def queue_selected(self) -> None:
         item = self._catalog_list.currentItem()
         if item is None or item.isHidden():
-            self._notify("Selecione uma música na lista.")
+            self._notify(tr("Selecione uma música na lista."))
             return
         self.add_to_queue(self._catalog[self._catalog_list.row(item)])
 
     def add_to_queue(self, entry: CatalogEntry, position: int | None = None) -> None:
         """Add without playing: songs only start when asked to."""
         if self._active and entry == self._playing_entry:
-            self._notify(f"Já está tocando: {entry.name}")
+            self._notify(tr("Já está tocando: {0}").format(entry.name))
             return
         if entry in self._queue:
-            self._notify(f"Já está na fila: {entry.name}")
+            self._notify(tr("Já está na fila: {0}").format(entry.name))
             return
         row = len(self._queue) if position is None else position
         self._queue.insert(row, entry)
         self._queue_list.insertItem(row, entry.label)
-        self._notify(f"Na fila: {entry.name}")
+        self._notify(tr("Na fila: {0}").format(entry.name))
         self._update_controls()
 
     def _on_catalog_song_dropped(self, catalog_row: int, position: int) -> None:
@@ -877,7 +891,7 @@ class PlayerWindow(QMainWindow):
         elif self._queue:
             self.play_next()
         else:
-            self._notify("A fila está vazia.")
+            self._notify(tr("A fila está vazia."))
 
     def play_next(self) -> None:
         """Play the next playable song, skipping any that cannot be opened."""
@@ -890,7 +904,7 @@ class PlayerWindow(QMainWindow):
                     self._playing_entry = entry
                     return
             except SongError as exc:
-                self._notify(f"{entry.name}: {exc} Pulando.")
+                self._notify(tr("{0}: {1} Pulando.").format(entry.name, exc))
             except SynthError as exc:
                 self._show_error(str(exc))
                 return
@@ -900,7 +914,7 @@ class PlayerWindow(QMainWindow):
 
     def choose_file(self) -> None:
         start = self._settings.value("last_dir", str(Path.home()))
-        path, _ = QFileDialog.getOpenFileName(self, "Abrir música", start, FILE_FILTER)
+        path, _ = QFileDialog.getOpenFileName(self, tr("Abrir música"), start, FILE_FILTER)
         if path:
             self._settings.setValue("last_dir", str(Path(path).parent))
             self.open_song(path)
@@ -916,7 +930,7 @@ class PlayerWindow(QMainWindow):
         # The first opening of a score takes a moment, unlike the other formats.
         source = Path(path)
         if source.suffix.lower() in MUSICXML_SUFFIXES and not is_prepared_score(source):
-            self._notify(f"Preparando a partitura, só na primeira vez: {source.stem}")
+            self._notify(tr("Preparando a partitura, só na primeira vez: {0}").format(source.stem))
             self._lyrics.repaint()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
@@ -938,7 +952,7 @@ class PlayerWindow(QMainWindow):
         self._tempo_label.setText("100%")
         heading = f"{song.title} — {song.singer}" if song.singer else song.title
         self._title.setText(heading)
-        self.setWindowTitle(f"{song.title} — Videokê")
+        self.setWindowTitle(tr("{0} — Videokê").format(song.title))
         self._slider.setRange(0, song.total_ticks)
         self._slider.setValue(0)
         self._show_position(0)
@@ -956,7 +970,7 @@ class PlayerWindow(QMainWindow):
     def change_volume(self, step: int) -> None:
         self._volume_slider.setValue(self._volume_slider.value() + step)
         if self._lyrics.notice() or self.isFullScreen():
-            self._notify(f"Volume: {self._volume_slider.value()}%")
+            self._notify(tr("Volume: {0}%").format(self._volume_slider.value()))
 
     def _current_gain(self) -> float:
         return self._gain if self._gain is not None else self._volume_slider.value() / 100 * FULL_VOLUME_GAIN
@@ -980,8 +994,8 @@ class PlayerWindow(QMainWindow):
     def choose_interface_font_size(self) -> None:
         size, accepted = QInputDialog.getInt(
             self,
-            "Tamanho da letra dos menus",
-            "Tamanho da letra de menus, botões e listas:",
+            tr("Tamanho da letra dos menus"),
+            tr("Tamanho da letra de menus, botões e listas:"),
             self.interface_font_size(),
             INTERFACE_FONT_MIN,
             INTERFACE_FONT_MAX,
@@ -1006,7 +1020,7 @@ class PlayerWindow(QMainWindow):
         theme = THEMES[self._theme_name]
         QApplication.instance().setStyleSheet(style_sheet(theme, self.interface_font_size()))
         self._arrange_controls()
-        self._theme_button.setText("Modo claro" if self._theme_name == DARK else "Modo escuro")
+        self._theme_button.setText(tr("Modo claro") if self._theme_name == DARK else tr("Modo escuro"))
         self._stop_button.setIcon(media_icon("stop", theme.text))
         self._next_button.setIcon(media_icon("next", theme.text))
         self._update_controls()
@@ -1030,7 +1044,7 @@ class PlayerWindow(QMainWindow):
         soundfont = self._soundfont or self._settings.value("soundfont") or find_soundfont()
         if not soundfont or not Path(soundfont).is_file():
             soundfont, _ = QFileDialog.getOpenFileName(
-                self, "Escolha um SoundFont", str(Path.home()), "SoundFont (*.sf2 *.sf3);;Todos os arquivos (*)"
+                self, tr("Escolha um SoundFont"), str(Path.home()), tr("SoundFont (*.sf2 *.sf3);;Todos os arquivos (*)")
             )
             if not soundfont:
                 return None
@@ -1050,7 +1064,7 @@ class PlayerWindow(QMainWindow):
     def _start_microphone(self) -> None:
         # Offline rendering has no real clock for the microphone to follow.
         if self._realtime and self._score_action.isChecked() and not self._microphone.start():
-            self._notify("Nenhum microfone disponível: a música tocará sem nota.")
+            self._notify(tr("Nenhum microfone disponível: a música tocará sem nota."))
 
     def _on_score_option_toggled(self, enabled: bool) -> None:
         self._settings.setValue("score_enabled", "true" if enabled else "false")
@@ -1181,7 +1195,7 @@ class PlayerWindow(QMainWindow):
         loaded = self._song is not None
         playing = loaded and self._synth is not None and self._synth.is_playing
         self._play_button.setIcon(media_icon("pause" if playing else "play", "#ffffff"))
-        self._play_button.setText("Pausar" if playing else "Tocar")
+        self._play_button.setText(tr("Pausar") if playing else tr("Tocar"))
         self._play_button.setEnabled(loaded or bool(self._queue))
         for widget in (self._stop_button, self._slider, self._slower_button, self._faster_button):
             widget.setEnabled(loaded)
@@ -1211,7 +1225,7 @@ class PlayerWindow(QMainWindow):
     # Lyric font and background
 
     def choose_font(self) -> None:
-        accepted, font = QFontDialog.getFont(self._lyrics.lyric_font(), self, "Fonte e tamanho da letra")
+        accepted, font = QFontDialog.getFont(self._lyrics.lyric_font(), self, tr("Fonte e tamanho da letra"))
         if accepted:
             self.set_lyric_font(font)
 
@@ -1224,7 +1238,7 @@ class PlayerWindow(QMainWindow):
         size = max(MIN_FONT_SIZE, min(MAX_FONT_SIZE, font.pointSize() + step))
         font.setPointSize(size)
         self.set_lyric_font(font)
-        self._notify(f"Tamanho da letra: {size}")
+        self._notify(tr("Tamanho da letra: {0}").format(size))
 
     def reset_font(self) -> None:
         self._lyrics.set_lyric_font(default_lyric_font())
@@ -1232,7 +1246,7 @@ class PlayerWindow(QMainWindow):
 
     def choose_background_folder(self) -> None:
         start = self._settings.value("background_folder", str(Path.home()))
-        folder = QFileDialog.getExistingDirectory(self, "Pasta de imagens e vídeos", start)
+        folder = QFileDialog.getExistingDirectory(self, tr("Pasta de imagens e vídeos"), start)
         if folder:
             self.set_background_folder(folder)
 
@@ -1240,7 +1254,7 @@ class PlayerWindow(QMainWindow):
         self._settings.setValue("background_folder", folder)
         count = self._background.set_folder(folder)
         if not count:
-            self._notify("Nenhuma imagem ou vídeo nessa pasta.")
+            self._notify(tr("Nenhuma imagem ou vídeo nessa pasta."))
         elif self._synth and self._synth.is_playing:
             self._background.start()
 
@@ -1249,7 +1263,7 @@ class PlayerWindow(QMainWindow):
         self._background.set_folder(None)
 
     def _show_error(self, message: str) -> None:
-        QMessageBox.warning(self, "Videokê", message)
+        QMessageBox.warning(self, tr("Videokê"), message)
 
     def closeEvent(self, event) -> None:
         self._timer.stop()
@@ -1275,12 +1289,25 @@ def _clock(seconds: float) -> str:
     return f"{total // 60}:{total % 60:02d}"
 
 
+def _load_qt_translation(application: QApplication) -> None:
+    """Qt's own buttons, such as Cancel, come in English unless told otherwise."""
+    if LANGUAGE != PORTUGUESE:
+        return
+    translator = QTranslator(application)
+    folder = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    for name in (f"qtbase_{QLocale.system().name()}", "qtbase_pt_BR", "qtbase_pt_PT"):
+        if translator.load(name, folder):
+            application.installTranslator(translator)
+            return
+
+
 def main() -> int:
     if len(sys.argv) > 2 and sys.argv[1] == "--self-test":
         import self_test
 
         return self_test.run(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
     application = QApplication(sys.argv)
+    _load_qt_translation(application)
     application.setDesktopFileName(SETTINGS_NAME)
     application.setWindowIcon(QIcon(str(ICON_PATH)))
     window = PlayerWindow()

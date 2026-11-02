@@ -17,6 +17,8 @@ type 16 colours a syllable, 17 and 18 load the upper and lower display lines.
 
 from __future__ import annotations
 
+from i18n import tr
+
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,8 +91,8 @@ def parse_st3(data: bytes) -> St3Song:
         if data.startswith(MAGIC_V300):
             return _parse_v300(data)
     except (struct.error, IndexError, EOFError, OSError) as exc:
-        raise St3Error(f"Arquivo .st3 truncado ou corrompido: {exc}") from exc
-    raise St3Error("Não é um arquivo .st3 reconhecido.")
+        raise St3Error(tr("Arquivo .st3 truncado ou corrompido: {0}").format(exc)) from exc
+    raise St3Error(tr("Não é um arquivo .st3 reconhecido."))
 
 
 def _header_text(data: bytes, start: int, end: int) -> str:
@@ -162,7 +164,7 @@ def _parse_v300(data: bytes) -> St3Song:
     try:
         midi = read_midi(midi_data)
     except ValueError as exc:
-        raise St3Error(f"MIDI interno inválido: {exc}") from exc
+        raise St3Error(tr("MIDI interno inválido: {0}").format(exc)) from exc
 
     return St3Song(
         version="3.00",
@@ -187,7 +189,7 @@ def _read_sync_records(data: bytes) -> list[SyncEvent]:
 def _parse_v350(data: bytes) -> St3Song:
     name = data.find(b"CEVENT\0")
     if name < 4:
-        raise St3Error("Bloco CEVENT não encontrado.")
+        raise St3Error(tr("Bloco CEVENT não encontrado."))
     chunk_end = name + struct.unpack_from("<I", data, name - 4)[0]
     ticks_per_beat, table_size = struct.unpack_from("<HH", data, name + 12)
     body_length, stored_length = struct.unpack_from("<II", data, name + 20)
@@ -211,7 +213,7 @@ def _parse_v350(data: bytes) -> St3Song:
         length = struct.unpack_from("<I", body, offset)[0]
         offset += 4
         if offset + length > len(body):
-            raise St3Error(f"Trilha ultrapassa o bloco CEVENT em {offset:#x}.")
+            raise St3Error(tr("Trilha ultrapassa o bloco CEVENT em {0}.").format(offset))
         events = _read_events(body, offset, offset + length, sync)
         midi.tracks.append(_to_midi_track(events))
         offset += length
@@ -312,7 +314,7 @@ def _read_events(
                 field_name = "name" if message_type in ("track_name", "instrument_name") else "text"
                 events.append((tick, mido.MetaMessage(message_type, **{field_name: text})))
     if offset != end:
-        raise St3Error(f"Evento ultrapassa o fim da trilha em {offset:#x}.")
+        raise St3Error(tr("Evento ultrapassa o fim da trilha em {0}.").format(offset))
     return events
 
 
@@ -331,7 +333,7 @@ def _read_channel_event(
     status = data[offset]
     offset += 1
     if status < 0x80 or status >= 0xF0:
-        raise St3Error(f"Evento de canal inválido {status:#x} em {offset:#x}.")
+        raise St3Error(tr("Evento de canal inválido {0} em {1}.").format(status, offset))
     channel = status & 0x0F
     kind = status & 0xF0
     first = data[offset] & 0x7F

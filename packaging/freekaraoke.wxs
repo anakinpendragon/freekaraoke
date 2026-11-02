@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Windows installer. Built with WiX: see .github/workflows/build.yml. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="FreeKaraoke" Manufacturer="Anakinpendragon" Version="$(var.Version)"
+           UpgradeCode="6B6E7F1A-3C42-4D19-9A57-2E8F0C5D7A31" Scope="perMachine" Language="1033">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of FreeKaraoke is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="FreeKaraoke.ico" SourceFile="packaging\freekaraoke.ico" />
+    <Property Id="ARPPRODUCTICON" Value="FreeKaraoke.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/anakinpendragon/freekaraoke" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="FreeKaraoke" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="ProgramFiles" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.App)\**" />
+    </ComponentGroup>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="B8F3C2D4-6A1E-4F07-8C39-1D5E7A9B0C42">
+        <Shortcut Id="FreeKaraokeShortcut" Name="FreeKaraoke" Description="Karaoke player"
+                  Target="[INSTALLFOLDER]FreeKaraoke.exe" WorkingDirectory="INSTALLFOLDER" Icon="FreeKaraoke.ico" />
+        <RegistryValue Root="HKLM" Key="Software\FreeKaraoke" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="ProgramFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+</Wix>

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from i18n import tr
+
 import datetime
 from pathlib import Path
 
@@ -25,7 +27,7 @@ def export_song_list(entries: list[CatalogEntry], path: str | Path) -> None:
     """Write the PDF; raises OSError if the file cannot be created."""
     writer = QPdfWriter(str(path))
     writer.setResolution(RESOLUTION)
-    writer.setTitle("Lista de músicas")
+    writer.setTitle(tr("Lista de músicas"))
     writer.setCreator("FreeKaraoke")
     writer.setPageLayout(
         QPageLayout(
@@ -37,7 +39,7 @@ def export_song_list(entries: list[CatalogEntry], path: str | Path) -> None:
     )
     painter = QPainter()
     if not painter.begin(writer):
-        raise OSError(f"Não consegui criar o arquivo: {path}")
+        raise OSError(tr("Não consegui criar o arquivo: {0}").format(path))
     try:
         _draw(painter, writer, entries)
     finally:
@@ -73,7 +75,7 @@ def _draw(painter: QPainter, writer: QPdfWriter, entries: list[CatalogEntry]) ->
     song_width = singer_x - song_x - row_height / 2
     singer_width = width - singer_x
 
-    today = datetime.date.today().strftime("%d/%m/%Y")
+    today = datetime.date.today().strftime(tr("%d/%m/%Y"))
     index = 0
     for page in range(1, pages + 1):
         if page > 1:
@@ -81,14 +83,14 @@ def _draw(painter: QPainter, writer: QPdfWriter, entries: list[CatalogEntry]) ->
         y = 0.0
         if page == 1:
             painter.setFont(heading_font)
-            painter.drawText(QRectF(0, 0, width, heading_height), Qt.AlignmentFlag.AlignVCenter, "Lista de músicas")
+            painter.drawText(QRectF(0, 0, width, heading_height), Qt.AlignmentFlag.AlignVCenter, tr("Lista de músicas"))
             painter.setFont(body_font)
-            summary = f"{len(entries)} músicas — {today}"
+            summary = tr("{0} músicas — {1}").format(len(entries), today)
             painter.drawText(QRectF(0, 0, width, heading_height), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, summary)
             y = heading_height
 
         painter.setFont(bold_font)
-        for x, text in ((number_x, "Nº"), (song_x, "Música"), (singer_x, "Cantor")):
+        for x, text in ((number_x, tr("Nº")), (song_x, tr("Música")), (singer_x, tr("Cantor"))):
             painter.drawText(QRectF(x, y, width - x, row_height), Qt.AlignmentFlag.AlignVCenter, text)
         y += row_height
         painter.drawLine(0, round(y), round(width), round(y))
@@ -114,5 +116,5 @@ def _draw(painter: QPainter, writer: QPdfWriter, entries: list[CatalogEntry]) ->
         painter.drawText(
             QRectF(0, height - row_height, width, row_height),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-            f"Página {page} de {pages}",
+            tr("Página {0} de {1}").format(page, pages),
         )

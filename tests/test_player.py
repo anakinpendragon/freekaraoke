@@ -2447,3 +2447,195 @@ def test_large_interface_letters_move_controls_to_their_own_row(window, qapp):
     assert window.minimumSizeHint().width() < 32 * 80
     window.set_interface_font_size(fits)
     assert window._settings_row.count() == 0
+
+
+PROJECT = Path(__file__).resolve().parent.parent
+TRANSLATED_MODULES = [
+    "player.py", "song.py", "synth.py", "st3.py", "kar.py", "song_list_pdf.py",
+    "conversor.py", "st3_writer.py", "tolerant_midi.py", "app.py",
+]
+
+
+def texts_given_to_tr():
+    import ast
+    import re
+
+    found = set()
+    for name in TRANSLATED_MODULES:
+        for node in ast.walk(ast.parse((PROJECT / name).read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "tr":
+                assert isinstance(node.args[0], ast.Constant), f"{name}:{node.lineno}: tr needs a literal"
+                found.add(node.args[0].value)
+    template = (PROJECT / "templates" / "index.html").read_text(encoding="utf-8")
+    found.update(re.findall(r'tr\("([^"]+)"\)', template))
+    return found
+
+
+def test_every_text_has_an_english_translation_and_none_is_left_over():
+    from i18n import TRANSLATIONS
+
+    used = texts_given_to_tr()
+    assert sorted(used - set(TRANSLATIONS)) == []
+    assert sorted(set(TRANSLATIONS) - used) == []
+
+
+def test_translations_keep_the_same_placeholders_and_filters():
+    import re
+
+    from i18n import TRANSLATIONS
+
+    for portuguese, english in TRANSLATIONS.items():
+        assert sorted(re.findall(r"\{\d\}", portuguese)) == sorted(re.findall(r"\{\d\}", english)), portuguese
+        assert portuguese.count("&") == english.count("&"), portuguese
+        assert re.findall(r"\*\.\w+", portuguese) == re.findall(r"\*\.\w+", english), portuguese
+
+
+def test_no_portuguese_message_escapes_translation():
+    import ast
+
+    # Accents in anything but tr() would show up untranslated in English.
+    problems = []
+    for name in TRANSLATED_MODULES:
+        tree = ast.parse((PROJECT / name).read_text(encoding="utf-8"))
+        given = {
+            id(argument)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "tr"
+            for argument in node.args
+        }
+        documentation = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef))
+            and node.body and isinstance(node.body[0], ast.Expr)
+        }
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if id(node) not in given and id(node) not in documentation:
+                    if any(character in "áàâãéêíóôõúçÁÉÍÓÚÇ" for character in node.value):
+                        problems.append((name, node.lineno, node.value[:40]))
+    assert problems == []
+
+
+@pytest.mark.parametrize(
+    "environment, expected",
+    [
+        ({"LANG": "pt_BR.UTF-8"}, "pt"),
+        ({"LANG": "pt_PT.UTF-8"}, "pt"),
+        ({"LANG": "en_US.UTF-8"}, "en"),
+        ({"LANG": "de_DE.UTF-8"}, "en"),
+        ({"LANG": "C"}, "en"),
+        ({}, "en"),
+        ({"LANG": "pt_BR.UTF-8", "LANGUAGE": "fr"}, "en"),
+        ({"LANG": "en_US", "LC_ALL": "pt_BR"}, "pt"),
+        ({"LANG": "pt_BR", "FREEKARAOKE_LANG": "en"}, "en"),
+        ({"LANG": "en_US", "FREEKARAOKE_LANG": "pt"}, "pt"),
+    ],
+)
+def test_language_follows_the_system(monkeypatch, environment, expected):
+    from i18n import system_language
+
+    for variable in ("FREEKARAOKE_LANG", "LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(variable, raising=False)
+    for variable, value in environment.items():
+        monkeypatch.setenv(variable, value)
+    assert system_language() == expected
+
+
+def english_run(tmp_path, code):
+    """Language is fixed when the program loads, so English needs a process of its own."""
+    environment = {
+        **os.environ,
+        "FREEKARAOKE_LANG": "en",
+        "QT_QPA_PLATFORM": "offscreen",
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+    }
+    process = subprocess.run(
+        [sys.executable, "-c", code], cwd=PROJECT, env=environment, capture_output=True, text=True, timeout=90
+    )
+    assert process.returncode == 0, process.stderr
+    return process.stdout
+
+
+@needs_soundfont
+def test_whole_window_shows_english_without_portuguese_left(tmp_path):
+    from i18n import TRANSLATIONS
+
+    code = """
+from PySide6.QtWidgets import QApplication, QAbstractButton, QLabel, QLineEdit
+from PySide6.QtGui import QAction
+from player import PlayerWindow
+application = QApplication([])
+window = PlayerWindow(realtime=False)
+window.show()
+widgets = [window, window._song_window]
+texts = [window.windowTitle(), window._song_window.windowTitle()]
+for root in widgets:
+    for widget in root.findChildren(QAbstractButton) + root.findChildren(QLabel):
+        texts.append(widget.text())
+    for widget in root.findChildren(QLineEdit):
+        texts.append(widget.placeholderText())
+for action in window.findChildren(QAction):
+    texts.append(action.text())
+for menu_action in window.menuBar().actions():
+    texts.append(menu_action.text())
+texts.append(window._singer_filter.itemText(0))
+window.close()
+print("\\n".join(texts))
+"""
+    shown = set(english_run(tmp_path, code).splitlines())
+    assert "All singers" in shown
+    assert "&File" in shown
+    assert "Song number" in shown
+    assert "Light mode" in shown
+    leftover = shown & (set(TRANSLATIONS) - {k for k, v in TRANSLATIONS.items() if k == v})
+    assert leftover == set()
+
+
+def test_converter_messages_and_options_in_english(tmp_path):
+    source = tmp_path / "song.musicxml"
+    source.write_text(score_xml(SUNG_NOTES), encoding="utf-8")
+    code = f"""
+import conversor
+print(conversor.main([{str(source)!r}, "--format", "kar"]))
+print(conversor.main([{str(source)!r}, "--format", "kar"]))
+"""
+    environment_output = english_run(tmp_path, code.replace("print(conversor", "import contextlib,sys\nwith contextlib.redirect_stderr(sys.stdout):\n    print(conversor"))
+    assert "Created:" in environment_output
+    assert "Error: The output already exists" in environment_output
+    assert "--overwrite" in environment_output
+
+
+def test_pdf_is_in_english_and_regenerated_when_the_language_changes(tmp_path):
+    from library import Library
+
+    code = """
+from PySide6.QtWidgets import QApplication
+from catalog import CatalogEntry
+from pathlib import Path
+from player import load_bundled_fonts
+from song_list_pdf import export_song_list
+application = QApplication([])
+load_bundled_fonts()
+export_song_list([CatalogEntry(1, Path("a.kar"))], {path!r})
+""".format(path=str(tmp_path / "list.pdf"))
+    english_run(tmp_path, code)
+    pages = pdf_pages(tmp_path / "list.pdf")
+    assert "Songlist" in pages[0]
+    assert "Singer" in pages[0]
+    assert "Others" in pages[0]
+
+    folder = tmp_path / "m"
+    touch_song(folder, "a.kar")
+    library = Library(tmp_path / "n.sqlite")
+    library.sync(folder)
+    portuguese = library.signature
+    library.close()
+    change = f"""
+from library import Library
+library = Library({str(tmp_path / "n.sqlite")!r})
+library.sync({str(folder)!r})
+print(library.signature)
+"""
+    assert english_run(tmp_path, change).strip() != portuguese

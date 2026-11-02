@@ -48,7 +48,8 @@ find "$QT" -maxdepth 1 -regextype posix-extended -regex ".*/Qt($UNUSED).*" -dele
 NEEDED_BY_VIDEO='Quick\.|Qml\.|QmlModels|QmlMeta|QmlWorkerScript|MultimediaQuick'
 find "$QT/Qt/lib" -maxdepth 1 -regextype posix-extended -regex ".*/libQt6($UNUSED).*" \
     ! -regex ".*/libQt6($NEEDED_BY_VIDEO).*" -delete
-rm -rf "$QT/Qt/qml" "$QT/Qt/translations" "$QT/Qt/resources" "$QT/Qt/metatypes" "$QT/Qt/libexec" \
+find "$QT/Qt/translations" -type f ! -name 'qtbase_pt*' -delete
+rm -rf "$QT/Qt/qml" "$QT/Qt/resources" "$QT/Qt/metatypes" "$QT/Qt/libexec" \
     "$QT/include" "$QT/typesystems" "$QT/glue" "$QT/scripts" "$QT/examples"
 find "$QT" -maxdepth 1 -type f -regextype posix-extended -regex ".*/(assistant|designer|linguist|lrelease|lupdate|qmake|qmlformat|qmlls|qmllint|qmlimportscanner|rcc|uic|balsam|balsamui|androiddeployqt).*" -delete
 rm -rf "$QT/Qt/plugins/qmltooling" "$QT/Qt/plugins/qmllint" "$QT/Qt/plugins/sceneparsers" \
@@ -103,10 +104,11 @@ docker run --rm -v "$APPDIR/usr/lib:/out" "$LIBRARY_DISTRO" bash -euc '
 
 APP="$APPDIR/usr/app"
 mkdir -p "$APP/soundfonts"
-cp "$ROOT"/{player,background,catalog,conversor,kar,library,score,self_test,song,song_list_pdf,st3,st3_writer,synth,theme,tolerant_midi}.py "$APP/"
+cp "$ROOT"/{player,background,catalog,conversor,i18n,kar,library,score,self_test,song,song_list_pdf,st3,st3_writer,synth,theme,tolerant_midi}.py "$APP/"
 cp -r "$ROOT/fonts" "$ROOT/icons" "$APP/"
 cp "$ROOT/soundfonts/FluidR3_GM.sf2" "$ROOT/soundfonts/FluidR3_GM.copyright.txt" "$APP/soundfonts/"
 cp "$ROOT/LICENSE" "$ROOT/README.md" "$APP/"
+cp -r "$ROOT/licenses" "$APP/"
 mkdir -p "$APPDIR/usr/share/doc"
 mv "$APPDIR/usr/lib/licencas" "$APPDIR/usr/share/doc/licencas"
 

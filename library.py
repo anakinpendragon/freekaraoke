@@ -13,6 +13,7 @@ import sqlite3
 from pathlib import Path
 
 from catalog import CatalogEntry, find_songs, read_singer
+from i18n import LANGUAGE
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS songs (
@@ -122,7 +123,8 @@ class Library:
 
     def _present_entries(self, root: Path, files: dict) -> list[CatalogEntry]:
         entries = []
-        digest = hashlib.sha256(PDF_LAYOUT_VERSION.encode())
+        # The PDF's text follows the system's language.
+        digest = hashlib.sha256(f"{PDF_LAYOUT_VERSION}|{LANGUAGE}".encode())
         rows = self._connection.execute(
             "SELECT number, path, singer FROM songs WHERE present = 1 ORDER BY number"
         )

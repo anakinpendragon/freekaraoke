@@ -6,6 +6,8 @@ the audio. Using ctypes also avoids a compiled dependency in the AppImage.
 
 from __future__ import annotations
 
+from i18n import tr
+
 import ctypes
 import ctypes.util
 import os
@@ -59,7 +61,7 @@ def _load_library():
     try:
         library = ctypes.CDLL(name or "libfluidsynth.so.3")
     except OSError as exc:
-        raise SynthError("A biblioteca FluidSynth não foi encontrada.") from exc
+        raise SynthError(tr("A biblioteca FluidSynth não foi encontrada.")) from exc
 
     signatures = {
         "new_fluid_settings": (c_void_p, []),
@@ -116,10 +118,10 @@ class Synth:
         self._synth = self._lib.new_fluid_synth(self._settings)
         if not self._synth:
             self.close()
-            raise SynthError("Não consegui iniciar o sintetizador.")
+            raise SynthError(tr("Não consegui iniciar o sintetizador."))
         if self._lib.fluid_synth_sfload(self._synth, os.fsencode(soundfont), 1) == FLUID_FAILED:
             self.close()
-            raise SynthError(f"Não consegui carregar o SoundFont: {soundfont}")
+            raise SynthError(tr("Não consegui carregar o SoundFont: {0}").format(soundfont))
         if realtime:
             self._open_audio()
 
@@ -132,7 +134,7 @@ class Synth:
                 self.audio_driver_name = name
                 return
         self.close()
-        raise SynthError("Não encontrei nenhuma saída de áudio disponível.")
+        raise SynthError(tr("Não encontrei nenhuma saída de áudio disponível."))
 
     def load(self, midi_bytes: bytes) -> None:
         self.unload()
@@ -142,7 +144,7 @@ class Synth:
         status = self._lib.fluid_player_add_mem(self._player, self._midi_buffer, len(midi_bytes))
         if status == FLUID_FAILED:
             self.unload()
-            raise SynthError("A FluidSynth recusou o arquivo MIDI.")
+            raise SynthError(tr("A FluidSynth recusou o arquivo MIDI."))
         self._paused = True
 
     def play(self) -> None:

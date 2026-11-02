@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from i18n import tr
+
 import base64
 import bisect
 import dataclasses
@@ -152,13 +154,13 @@ def load_song(path: str | Path) -> Song:
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
-        raise SongError(f"Formato não suportado: {suffix or 'sem extensão'}")
+        raise SongError(tr("Formato não suportado: {0}").format(suffix or tr('sem extensão')))
     if suffix in MUSICXML_SUFFIXES:
         return _load_musicxml(path)
     try:
         data = path.read_bytes()
     except OSError as exc:
-        raise SongError(f"Não consegui abrir o arquivo: {exc.strerror or exc}") from exc
+        raise SongError(tr("Não consegui abrir o arquivo: {0}").format(exc.strerror or exc)) from exc
 
     if suffix == ".st3":
         try:
@@ -172,7 +174,7 @@ def load_song(path: str | Path) -> Song:
     try:
         midi = read_midi(data)
     except ValueError as exc:
-        raise SongError(f"Arquivo MIDI inválido: {exc}") from exc
+        raise SongError(tr("Arquivo MIDI inválido: {0}").format(exc)) from exc
     title, singer, lyrics, sync = parse_kar_lyrics(midi)
     return _build_song(path, midi, title, singer, lyrics, sync)
 
@@ -260,7 +262,7 @@ def _build_song(path, midi, title, singer, lyrics, sync) -> Song:
     _drop_runaway_tracks(midi)
     total_ticks = _last_note_tick(midi)
     if not total_ticks:
-        raise SongError("O arquivo não tem notas para tocar.")
+        raise SongError(tr("O arquivo não tem notas para tocar."))
     if len(midi.tracks) > 1:
         midi.type = 1
     buffer = io.BytesIO()

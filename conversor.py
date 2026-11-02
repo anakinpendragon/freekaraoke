@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from i18n import tr
+
 import argparse
 import io
 import sys
@@ -32,25 +34,25 @@ def convert_file(path: Path, output_format: str = DEFAULT_FORMAT, title: str = "
 def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="conversor",
-        description="Cria um arquivo de karaokê .st3 ou .kar a partir de uma partitura MusicXML com letra.",
+        description=tr("Cria um arquivo de karaokê .st3 ou .kar a partir de uma partitura MusicXML com letra."),
     )
-    parser.add_argument("entrada", type=Path, help="arquivo .musicxml, .mxl ou .xml")
-    parser.add_argument("saida", type=Path, nargs="?", help="arquivo de saída (padrão: ao lado da entrada)")
-    parser.add_argument("--formato", choices=FORMATS, help=f"formato de saída (padrão: {DEFAULT_FORMAT}, ou o da extensão da saída)")
-    parser.add_argument("--titulo", default="", help="título da música (padrão: o da partitura)")
-    parser.add_argument("--artista", default="", help="artista (padrão: o compositor da partitura)")
-    parser.add_argument("-f", "--sobrescrever", action="store_true", help="substitui a saída se ela já existir")
+    parser.add_argument("entrada", metavar=tr("entrada"), type=Path, help=tr("arquivo .musicxml, .mxl ou .xml"))
+    parser.add_argument("saida", metavar=tr("saida"), type=Path, nargs="?", help=tr("arquivo de saída (padrão: ao lado da entrada)"))
+    parser.add_argument("--formato", "--format", dest="formato", choices=FORMATS, help=tr("formato de saída (padrão: {0}, ou o da extensão da saída)").format(DEFAULT_FORMAT))
+    parser.add_argument("--titulo", "--title", dest="titulo", default="", help=tr("título da música (padrão: o da partitura)"))
+    parser.add_argument("--artista", "--artist", dest="artista", default="", help=tr("artista (padrão: o compositor da partitura)"))
+    parser.add_argument("-f", "--sobrescrever", "--overwrite", dest="sobrescrever", action="store_true", help=tr("substitui a saída se ela já existir"))
     options = parser.parse_args(arguments)
 
     source: Path = options.entrada
     output_format = options.formato or _format_from_target(options.saida) or DEFAULT_FORMAT
     target: Path = options.saida or source.with_suffix(f".{output_format}")
     if not source.is_file():
-        return _fail(f"Arquivo não encontrado: {source}")
+        return _fail(tr("Arquivo não encontrado: {0}").format(source))
     if source.suffix.lower() not in MUSICXML_SUFFIXES:
-        return _fail(f"A entrada precisa ser MusicXML (.musicxml, .mxl ou .xml): {source}")
+        return _fail(tr("A entrada precisa ser MusicXML (.musicxml, .mxl ou .xml): {0}").format(source))
     if target.exists() and not options.sobrescrever:
-        return _fail(f"A saída já existe: {target}. Use --sobrescrever para substituir.")
+        return _fail(tr("A saída já existe: {0}. Use --sobrescrever para substituir.").format(target))
 
     try:
         data, title = convert_file(source, output_format, options.titulo, options.artista)
@@ -58,9 +60,9 @@ def main(arguments: list[str] | None = None) -> int:
     except ConversionError as exc:
         return _fail(str(exc))
     except OSError as exc:
-        return _fail(f"Não consegui gravar {target}: {exc.strerror or exc}")
+        return _fail(tr("Não consegui gravar {0}: {1}").format(target, exc.strerror or exc))
 
-    print(f"Criado: {target}" + (f" ({title})" if title else ""))
+    print(tr("Criado: {0}").format(target) + (f" ({title})" if title else ""))
     return 0
 
 
@@ -70,7 +72,7 @@ def _format_from_target(target: Path | None) -> str | None:
 
 
 def _fail(message: str) -> int:
-    print(f"Erro: {message}", file=sys.stderr)
+    print(tr("Erro: {0}").format(message), file=sys.stderr)
     return 1
 
 

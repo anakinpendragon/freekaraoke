@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="pt-BR">
+<html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Gerador de karaokê</title>
+  <title>{{ tr("Gerador de karaokê") }}</title>
   <style>
     body { font: 16px/1.5 system-ui, sans-serif; max-width: 34rem; margin: 2rem auto; padding: 0 1rem; }
     label { display: block; margin-top: 1rem; font-weight: 600; }
@@ -14,35 +14,35 @@
   </style>
 </head>
 <body>
-  <h1>Gerador de karaokê</h1>
-  <p>Baixe a partitura no MuseScore pela sua conta (de preferência em MusicXML, que preserva a letra) e envie o arquivo aqui.</p>
+  <h1>{{ tr("Gerador de karaokê") }}</h1>
+  <p>{{ tr("Baixe a partitura no MuseScore pela sua conta (de preferência em MusicXML, que preserva a letra) e envie o arquivo aqui.") }}</p>
 
   {% if error %}<p class="erro" role="alert">{{ error }}</p>{% endif %}
 
   <form action="{{ url_for('converter') }}" method="post" enctype="multipart/form-data">
-    <label for="arquivo">Arquivo da partitura
-      <small>.mxl, .musicxml, .xml, .mid, .midi ou .kar (máximo de 20 MB)</small>
+    <label for="arquivo">{{ tr("Arquivo da partitura") }}
+      <small>{{ tr(".mxl, .musicxml, .xml, .mid, .midi ou .kar (máximo de 20 MB)") }}</small>
     </label>
     <input id="arquivo" name="arquivo" type="file" accept=".mxl,.musicxml,.xml,.mid,.midi,.kar" required>
 
-    <label for="url">URL no MuseScore (opcional)
-      <small>Não é baixada; só dá nome ao arquivo quando a partitura não tem título.</small>
+    <label for="url">{{ tr("URL no MuseScore (opcional)") }}
+      <small>{{ tr("Não é baixada; só dá nome ao arquivo quando a partitura não tem título.") }}</small>
     </label>
     <input id="url" name="url" type="url" placeholder="https://musescore.com/user/32136986/scores/8263751">
 
-    <label for="titulo">Título (opcional)</label>
+    <label for="titulo">{{ tr("Título (opcional)") }}</label>
     <input id="titulo" name="titulo" type="text">
 
-    <label for="artista">Artista (opcional)</label>
+    <label for="artista">{{ tr("Artista (opcional)") }}</label>
     <input id="artista" name="artista" type="text">
 
-    <label for="formato">Formato de saída</label>
+    <label for="formato">{{ tr("Formato de saída") }}</label>
     <select id="formato" name="formato">
-      <option value="st3" selected>.st3 (letra mais fluida)</option>
-      <option value="kar">.kar (mais compatível)</option>
+      <option value="st3" selected>{{ tr(".st3 (letra mais fluida)") }}</option>
+      <option value="kar">{{ tr(".kar (mais compatível)") }}</option>
     </select>
 
-    <button type="submit">Gerar arquivo</button>
+    <button type="submit">{{ tr("Gerar arquivo") }}</button>
   </form>
 </body>
 </html>

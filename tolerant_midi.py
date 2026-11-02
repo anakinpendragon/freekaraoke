@@ -6,6 +6,8 @@ meta events, which make strict readers reject the whole song.
 
 from __future__ import annotations
 
+from i18n import tr
+
 import struct
 
 import mido
@@ -27,11 +29,11 @@ def read_midi(data: bytes) -> mido.MidiFile:
     """Parse MIDI bytes; raises ValueError only if there is no usable header."""
     start = data.find(b"MThd")
     if start < 0 or start + 14 > len(data):
-        raise ValueError("Cabeçalho MIDI não encontrado.")
+        raise ValueError(tr("Cabeçalho MIDI não encontrado."))
     data = data[:start] + _undo_text_mode_transfer(data[start:])
     midi_type, track_count, division = struct.unpack_from(">HHH", data, start + 8)
     if division == 0 or division & 0x8000:
-        raise ValueError("Divisão de tempo MIDI não suportada.")
+        raise ValueError(tr("Divisão de tempo MIDI não suportada."))
 
     midi = mido.MidiFile(type=min(midi_type, 2), ticks_per_beat=division, charset="latin1")
     # Tracks are located by their tag: some files declare wrong track lengths. The
@@ -43,7 +45,7 @@ def read_midi(data: bytes) -> mido.MidiFile:
         midi.tracks.append(_read_track(data, offset + 8, end))
         offset = following
     if not midi.tracks:
-        raise ValueError("O arquivo MIDI não tem trilhas.")
+        raise ValueError(tr("O arquivo MIDI não tem trilhas."))
     return midi
 
 

@@ -37,7 +37,8 @@ find "$SITE/music21/corpus" -type d -empty -delete
 find "$APPDIR" -type d -name __pycache__ -prune -exec rm -rf {} +
 
 mkdir -p "$APPDIR/usr/app"
-cp "$ROOT"/{conversor,kar,st3,st3_writer,tolerant_midi}.py "$ROOT/LICENSE" "$ROOT/README.md" "$APPDIR/usr/app/"
+cp "$ROOT"/{conversor,i18n,kar,st3,st3_writer,tolerant_midi}.py "$ROOT/LICENSE" "$ROOT/README.md" "$APPDIR/usr/app/"
+cp -r "$ROOT/licenses" "$APPDIR/usr/app/"
 
 rm -f "$APPDIR"/*.desktop "$APPDIR/.DirIcon"
 rm -f "$APPDIR"/*.png

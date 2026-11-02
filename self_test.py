@@ -223,7 +223,9 @@ def run(result_path: str, video_path: str | None) -> int:
     )
     failed = 0
     with open(result_path, "w", encoding="utf-8") as report:
-        report.write(f"sistema: {sys.platform}\n")
+        from i18n import LANGUAGE
+
+        report.write(f"sistema: {sys.platform}; idioma: {LANGUAGE}\n")
         for name, check in checks:
             try:
                 detail = check()

@@ -114,6 +114,10 @@ jobs:
           Expand-Archive fluidsynth.zip -DestinationPath build\unpacked
           New-Item -ItemType Directory -Force build\fluidsynth | Out-Null
           Move-Item "build\unpacked\$name\bin" build\fluidsynth\bin
+      - name: Definir a versão
+        run: |
+          $version = if ($env:GITHUB_REF_NAME -match '^v(\d+\.\d+\.\d+)$') { $Matches[1] } else { "0.0.1" }
+          "FREEKARAOKE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Gerar o programa
         run: pyinstaller --noconfirm --distpath dist --workpath build\pyinstaller packaging\freekaraoke.spec
       - name: Rodar o autoteste do programa
@@ -127,12 +131,40 @@ jobs:
           Get-Content result.txt -Encoding UTF8 | Select-String -Pattern '^FALHA|Error' | ForEach-Object { Write-Output "::error title=Autoteste::$_" }
           Get-Content result.txt -Encoding UTF8 | Select-String -Pattern '^(ok|RESULTADO)' | ForEach-Object { Write-Output "::notice title=Autoteste::$_" }
           if (-not (Select-String -Path result.txt -Pattern 'RESULTADO: tudo certo' -Encoding UTF8)) { exit 1 }
+      - name: Gerar o instalador MSI
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix build packaging\freekaraoke.wxs -arch x64 -d "Version=$env:FREEKARAOKE_VERSION" -bindpath "App=dist\FreeKaraoke" -o dist\FreeKaraoke-windows-x64.msi
+      - name: Instalar, testar e desinstalar o MSI
+        run: |
+          $msi = (Resolve-Path dist\FreeKaraoke-windows-x64.msi).Path
+          $install = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /l*v install.log" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { Get-Content install.log -Tail 15 | ForEach-Object { Write-Output "::error title=Instalação::$_" }; exit 1 }
+          $exe = "$env:ProgramFiles\FreeKaraoke\FreeKaraoke.exe"
+          if (-not (Test-Path $exe)) { Write-Output "::error::O programa não foi instalado em $exe"; exit 1 }
+          $shortcut = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\FreeKaraoke.lnk"
+          if (-not (Test-Path $shortcut)) { Write-Output "::error::O atalho não foi criado no menu Iniciar"; exit 1 }
+          $version = (Get-Item $exe).VersionInfo
+          if ($version.ProductName -ne "FreeKaraoke" -or $version.ProductVersion -ne $env:FREEKARAOKE_VERSION) { Write-Output "::error::Metadados errados: $($version.ProductName) $($version.ProductVersion)"; exit 1 }
+          $check = Start-Process -FilePath $exe -ArgumentList "--self-test", "$PWD\installed.txt", "$PWD\tests\data\video-teste.mp4" -PassThru
+          if (-not $check.WaitForExit(240000)) { $check.Kill(); Write-Output "::error::O programa instalado não terminou em 4 minutos" }
+          if (-not (Select-String -Path installed.txt -Pattern 'RESULTADO: tudo certo' -Encoding UTF8)) {
+            Get-Content installed.txt -Encoding UTF8 | Select-String -Pattern '^FALHA|Error' | ForEach-Object { Write-Output "::error title=Programa instalado::$_" }
+            exit 1
+          }
+          $remove = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn" -Wait -PassThru
+          if ($remove.ExitCode -ne 0) { Write-Output "::error::A desinstalação falhou: $($remove.ExitCode)"; exit 1 }
+          if (Test-Path $exe) { Write-Output "::error::A desinstalação deixou o programa para trás"; exit 1 }
+          if (Test-Path $shortcut) { Write-Output "::error::A desinstalação deixou o atalho para trás"; exit 1 }
+          Write-Output "::notice title=MSI::Instalado, testado e desinstalado: $env:FREEKARAOKE_VERSION"
       - name: Compactar
         run: Compress-Archive -Path dist\FreeKaraoke -DestinationPath dist\FreeKaraoke-windows-x64.zip -CompressionLevel Optimal
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/FreeKaraoke-windows-x64.zip
+          path: |
+            dist/FreeKaraoke-windows-x64.zip
+            dist/FreeKaraoke-windows-x64.msi
           compression-level: 0
 
   release:
@@ -151,6 +183,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes \
             files/linux/freekaraoke-x86_64.AppImage \
             files/linux/conversor-x86_64.AppImage \
+            files/windows/FreeKaraoke-windows-x64.msi \
             files/windows/FreeKaraoke-windows-x64.zip
         env:
           GH_TOKEN: ${{ github.token }}

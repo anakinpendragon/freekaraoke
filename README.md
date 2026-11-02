@@ -2,12 +2,14 @@
 
 Software de karaoke open source.
 
+*Open source karaoke software. The program shows English unless the system language is Portuguese; this document is in Portuguese.*
+
 ## Download
 
 Baixe a versão mais recente em [Releases](https://github.com/anakinpendragon/freekaraoke/releases):
 
 - **Linux:** `freekaraoke-x86_64.AppImage`. Dê permissão de execução e abra.
-- **Windows 10 ou 11 (64 bits):** `FreeKaraoke-windows-x64.zip`. Extraia a pasta inteira e abra `FreeKaraoke.exe`. O programa não tem assinatura digital, então o Windows pode avisar: clique em **Mais informações → Executar assim mesmo**.
+- **Windows 10 ou 11 (64 bits):** `FreeKaraoke-windows-x64.msi` instala o programa, com atalho no menu Iniciar e desinstalação pelo Windows. Sem instalar, extraia a pasta inteira de `FreeKaraoke-windows-x64.zip` e abra `FreeKaraoke.exe`. O programa ainda não tem assinatura digital, então o Windows pode avisar: clique em **Mais informações → Executar assim mesmo**.
 - **Conversor (Linux):** `conversor-x86_64.AppImage`.
 
 Player de karaokê para Linux que toca arquivos `.st3`, `.kar`, `.mid` e MusicXML, com letra colorida sílaba por sílaba, nota por ritmo, fila de músicas e fundo de imagens ou vídeos.
@@ -24,6 +26,10 @@ O AppImage do player precisa de um Linux x86-64 com **glibc 2.35 ou mais nova**:
 | Arch Linux | Atual | Testado |
 
 Distribuições mais antigas não são suportadas; o Debian 11, por exemplo, não funciona. Os testes foram feitos em contêineres, sem tela e sem som reais.
+
+## Idioma
+
+O programa fica em português quando o sistema está em português, e em inglês nos demais casos. Para forçar um idioma, defina a variável `FREEKARAOKE_LANG` como `pt` ou `en`. Os textos ficam em `i18n.py`.
 
 ## Formatos
 
@@ -194,7 +200,7 @@ O FreeKaraoke é software livre, distribuído sob a [GNU General Public License 
 
 ### Bibliotecas e recursos utilizados
 
-Cada componente continua sob a sua própria licença. Os itens marcados como "pacotes" são distribuídos nos AppImages ou no pacote do Windows. As versões variam conforme a construção.
+Cada componente continua sob a sua própria licença; os textos da LGPL e da SDL estão em [`licenses/`](licenses/), e os pacotes levam esses arquivos. Os itens marcados como "pacotes" são distribuídos nos AppImages ou no pacote do Windows. As versões variam conforme a construção.
 
 | Componente | Uso | Licença | Onde |
 |---|---|---|---|
@@ -217,6 +223,7 @@ Cada componente continua sob a sua própria licença. Os itens marcados como "pa
 | [SDL3](https://www.libsdl.org/) | Dependência da FluidSynth | Zlib | Pacote do Windows |
 | [libsndfile](https://github.com/libsndfile/libsndfile) | Dependência da FluidSynth | LGPLv2.1 ou posterior | Pacotes |
 | Bibliotecas do Ubuntu 22.04 das quais a FluidSynth depende | Áudio e sistema | Várias; os avisos vão em `usr/share/doc/licencas` dentro do AppImage | AppImage |
+| [WiX Toolset](https://wixtoolset.org/) | Construção do MSI | MS-RL | Só na construção |
 | [PyInstaller](https://pyinstaller.org/) | Construção do pacote do Windows | GPLv2 ou posterior, com exceção para o programa gerado | Só na construção |
 | [Flask](https://flask.palletsprojects.com/) | Página web do conversor | BSD-3-Clause | Só no código-fonte |
 | [pytest](https://pytest.org/) e [pytest-timeout](https://github.com/pytest-dev/pytest-timeout) | Testes | MIT | Só no código-fonte |

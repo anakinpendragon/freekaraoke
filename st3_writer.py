@@ -6,6 +6,8 @@ layout follows what all sample files share: see st3.py for the format overview.
 
 from __future__ import annotations
 
+from i18n import tr
+
 import io
 import struct
 
@@ -67,7 +69,7 @@ def build_st3(song: Song, title: str, artist: str) -> bytes:
 
 def _header(title: str, artist: str, record_count: int, text_length: int) -> bytes:
     if record_count > 0xFFFF or text_length > 0xFFFF:
-        raise ValueError("A letra é longa demais para o formato .st3.")
+        raise ValueError(tr("A letra é longa demais para o formato .st3."))
     header = bytearray(0x14 + HEADER_LENGTH)
     header[:15] = MAGIC_V300
     header[15] = 0x1A
