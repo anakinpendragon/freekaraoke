@@ -1905,7 +1905,7 @@ def test_every_theme_style_sheet_and_chevron_exists(qapp):
 
     for theme in THEMES.values():
         assert (ICON_DIRECTORY / theme.chevron).is_file()
-        sheet = style_sheet(theme)
+        sheet = style_sheet(theme, 12)
         assert sheet.count("{") == sheet.count("}")
         assert theme.chevron in sheet
 
@@ -2363,3 +2363,87 @@ def test_self_test_reports_a_failure_instead_of_stopping(tmp_path):
     assert "FALHA vídeo de fundo" in text
     assert "ok    som sintetizado" in text
     assert "RESULTADO: 1 falhas" in text
+
+
+@needs_soundfont
+def test_interface_font_follows_the_system_until_one_is_chosen(qapp):
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication
+    from player import PlayerWindow
+
+    original = QApplication.font()
+    system = QFont(original)
+    system.setPointSize(15)
+    QApplication.setFont(system)
+    first = PlayerWindow(soundfont, realtime=False)
+    try:
+        assert first.interface_font_size() == 15
+        assert "font-size: 15pt" in QApplication.instance().styleSheet()
+        assert "font-size: 24pt" in QApplication.instance().styleSheet()  # The song title scales too.
+
+        first.set_interface_font_size(20)
+        assert "font-size: 20pt" in QApplication.instance().styleSheet()
+        first.toggle_theme()
+        assert "font-size: 20pt" in QApplication.instance().styleSheet()  # Survives changing the theme.
+        first.close()
+
+        second = PlayerWindow(soundfont, realtime=False)
+        assert second.interface_font_size() == 20
+        second.set_interface_font_size(None)
+        assert second.interface_font_size() == 15
+        assert "font-size: 15pt" in QApplication.instance().styleSheet()
+        second.close()
+    finally:
+        QApplication.setFont(original)
+
+
+@needs_soundfont
+@pytest.mark.parametrize("saved, expected", [(2, 8), (500, 32), ("abc", 15)])
+def test_bad_saved_interface_font_size_is_handled(qapp, saved, expected):
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication
+    from player import PlayerWindow, open_settings
+
+    original = QApplication.font()
+    system = QFont(original)
+    system.setPointSize(15)
+    QApplication.setFont(system)
+    settings = open_settings()
+    settings.setValue("interface_font_size", saved)
+    settings.sync()
+    window = PlayerWindow(soundfont, realtime=False)
+    try:
+        assert window.interface_font_size() == expected
+    finally:
+        window.close()
+        QApplication.setFont(original)
+
+
+@needs_soundfont
+def test_interface_font_dialog_applies_only_when_accepted(window, monkeypatch):
+    import player
+
+    monkeypatch.setattr(player.QInputDialog, "getInt", lambda *args: (18, False))
+    before = window.interface_font_size()
+    window.choose_interface_font_size()
+    assert window.interface_font_size() == before
+
+    monkeypatch.setattr(player.QInputDialog, "getInt", lambda *args: (18, True))
+    window.choose_interface_font_size()
+    assert window.interface_font_size() == 18
+
+
+@needs_soundfont
+def test_large_interface_letters_move_controls_to_their_own_row(window, qapp):
+    width = window.screen().availableGeometry().width()
+    fits = max(8, int(width * 0.9 / 80))
+    window.set_interface_font_size(8)
+    if 8 * 80 <= width * 0.95:
+        assert window._settings_row.count() == 0
+    window.set_interface_font_size(32)
+    assert window._settings_row.count() == len(window._settings_widgets)
+    window.show()
+    qapp.processEvents()
+    assert window.minimumSizeHint().width() < 32 * 80
+    window.set_interface_font_size(fits)
+    assert window._settings_row.count() == 0

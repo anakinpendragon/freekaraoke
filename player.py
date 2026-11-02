@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFontDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -62,6 +63,10 @@ REFRESH_MS = 16
 MESSAGE_MS = 5000
 TYPED_NUMBER_MS = 10000
 SCORE_DISPLAY_MS = 8000
+INTERFACE_FONT_MIN = 8
+INTERFACE_FONT_MAX = 32
+FALLBACK_INTERFACE_FONT = 10
+CONTROLS_WIDTH_PER_POINT = 80  # Measured: all controls in one row need about this per point.
 DEFAULT_VOLUME = 50
 VOLUME_STEP = 5
 FULL_VOLUME_GAIN = 1.0
@@ -411,6 +416,9 @@ class PlayerWindow(QMainWindow):
         self._scorer: RhythmScorer | None = None
         self._gain_at_song_start = 1.0
         self._theme_name = DARK
+        # Read before any style sheet applies: this is the size the desktop asks for.
+        system_size = QApplication.font().pointSize()
+        self._system_font_size = system_size if system_size > 0 else FALLBACK_INTERFACE_FONT
         self._envelope_worker: MusicEnvelopeWorker | None = None
         self._soundfont_in_use: str | None = None
 
@@ -488,16 +496,23 @@ class PlayerWindow(QMainWindow):
         for widget in (self._songs_button, self._play_button, self._stop_button, self._next_button):
             button_row.addWidget(widget)
         button_row.addStretch(1)
-        for widget in (self._slower_button, self._tempo_label, self._faster_button):
-            button_row.addWidget(widget)
-        button_row.addSpacing(16)
-        for widget in (volume_title, self._volume_slider, self._volume_label, self._theme_button):
-            button_row.addWidget(widget)
+        self._button_row = button_row
+        self._settings_row = QHBoxLayout()
+        self._settings_widgets = (
+            self._slower_button,
+            self._tempo_label,
+            self._faster_button,
+            volume_title,
+            self._volume_slider,
+            self._volume_label,
+            self._theme_button,
+        )
 
         controls = QVBoxLayout()
         controls.setContentsMargins(0, 0, 0, 0)
         controls.addLayout(position_row)
         controls.addLayout(button_row)
+        controls.addLayout(self._settings_row)
 
         self._controls = QWidget()
         self._controls.setLayout(controls)
@@ -617,6 +632,9 @@ class PlayerWindow(QMainWindow):
         self._add_action(view_menu, "Músicas e fila (F2)", self.show_song_window)
         self._add_action(view_menu, "Tela cheia (F11; Esc para sair)", self.toggle_fullscreen)
         self._add_action(view_menu, "Alternar modo claro e escuro", self.toggle_theme)
+        view_menu.addSeparator()
+        self._add_action(view_menu, "Tamanho da letra dos menus...", self.choose_interface_font_size)
+        self._add_action(view_menu, "Usar o tamanho de letra do sistema", lambda: self.set_interface_font_size(None))
 
         lyrics_menu = menu_bar.addMenu("&Letra")
         self._add_action(lyrics_menu, "Fonte e tamanho...", self.choose_font)
@@ -943,6 +961,42 @@ class PlayerWindow(QMainWindow):
     def _current_gain(self) -> float:
         return self._gain if self._gain is not None else self._volume_slider.value() / 100 * FULL_VOLUME_GAIN
 
+    def interface_font_size(self) -> int:
+        """The chosen size for menus, buttons and lists, or the desktop's own."""
+        try:
+            saved = int(self._settings.value("interface_font_size", 0))
+        except (TypeError, ValueError):
+            saved = 0
+        return max(INTERFACE_FONT_MIN, min(INTERFACE_FONT_MAX, saved)) if saved else self._system_font_size
+
+    def _arrange_controls(self) -> None:
+        """Keep the window narrower than the screen: with large letters, use a third row."""
+        screen = self.screen() or QApplication.primaryScreen()
+        needed = CONTROLS_WIDTH_PER_POINT * self.interface_font_size()
+        row = self._button_row if needed <= screen.availableGeometry().width() * 0.95 else self._settings_row
+        for widget in self._settings_widgets:
+            row.addWidget(widget)
+
+    def choose_interface_font_size(self) -> None:
+        size, accepted = QInputDialog.getInt(
+            self,
+            "Tamanho da letra dos menus",
+            "Tamanho da letra de menus, botões e listas:",
+            self.interface_font_size(),
+            INTERFACE_FONT_MIN,
+            INTERFACE_FONT_MAX,
+        )
+        if accepted:
+            self.set_interface_font_size(size)
+
+    def set_interface_font_size(self, size: int | None) -> None:
+        """Pass None to follow the desktop's size again."""
+        if size is None:
+            self._settings.remove("interface_font_size")
+        else:
+            self._settings.setValue("interface_font_size", size)
+        self._apply_theme(self._theme_name)
+
     def toggle_theme(self) -> None:
         self._apply_theme(LIGHT if self._theme_name == DARK else DARK)
 
@@ -950,7 +1004,8 @@ class PlayerWindow(QMainWindow):
         self._theme_name = name if name in THEMES else DARK
         self._settings.setValue("theme", self._theme_name)
         theme = THEMES[self._theme_name]
-        QApplication.instance().setStyleSheet(style_sheet(theme))
+        QApplication.instance().setStyleSheet(style_sheet(theme, self.interface_font_size()))
+        self._arrange_controls()
         self._theme_button.setText("Modo claro" if self._theme_name == DARK else "Modo escuro")
         self._stop_button.setIcon(media_icon("stop", theme.text))
         self._next_button.setIcon(media_icon("next", theme.text))

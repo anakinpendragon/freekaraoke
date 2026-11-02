@@ -92,6 +92,10 @@ O player usa o microfone padrão do sistema e só mede o volume; nada é gravado
 
 O controle de volume vai de 0 a 100%. Em volumes altos, algumas músicas podem distorcer nos trechos mais fortes; se isso acontecer, baixe o volume do player e aumente o do sistema. O botão **Modo claro** / **Modo escuro** alterna o tema, com as cores do Bootstrap 5. A área da letra continua escura nos dois temas.
 
+### Tamanho da letra dos menus
+
+Menus, botões e listas seguem o tamanho de letra do sistema. Para escolher outro, use **Exibir → Tamanho da letra dos menus**; **Usar o tamanho de letra do sistema** volta ao padrão. A letra da música é separada: use **Letra → Fonte e tamanho** ou `Ctrl +` e `Ctrl -`.
+
 ### Fundo
 
 Em **Opções → Pasta de imagens e vídeos**, escolha a pasta do fundo. As imagens trocam a cada 15 segundos, e os vídeos tocam até o fim, sem som.
@@ -114,6 +118,7 @@ Chaves do `freekaraoke.ini`:
 | `background_folder` | Pasta de imagens e vídeos |
 | `lyric_font` | Fonte e tamanho da letra |
 | `volume` | Volume, de 0 a 100 |
+| `interface_font_size` | Tamanho da letra dos menus; sem essa chave, segue o sistema |
 | `theme` | Tema: `dark` ou `light` |
 | `score_enabled` | Se a nota pelo microfone está ligada |
 | `soundfont` | SoundFont escolhido, quando o padrão não é encontrado |

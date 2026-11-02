@@ -10,6 +10,7 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
 
 ICON_DIRECTORY = Path(__file__).resolve().parent / "icons"
 ICON_SIZE = 32
+TITLE_SCALE = 1.6
 DARK = "dark"
 LIGHT = "light"
 
@@ -38,12 +39,12 @@ THEMES = {
 }
 
 
-def style_sheet(theme: Theme) -> str:
+def style_sheet(theme: Theme, font_points: float) -> str:
     chevron = (ICON_DIRECTORY / theme.chevron).as_posix()
     return f"""
-    QWidget {{ background-color: {theme.body}; color: {theme.text}; font-size: 10pt; }}
+    QWidget {{ background-color: {theme.body}; color: {theme.text}; font-size: {font_points:g}pt; }}
     QLabel {{ background: transparent; }}
-    QLabel#songTitle {{ font-size: 16pt; font-weight: bold; }}
+    QLabel#songTitle {{ font-size: {round(font_points * TITLE_SCALE)}pt; font-weight: bold; }}
     QLabel#mutedLabel {{ color: {theme.muted}; }}
 
     QPushButton {{
