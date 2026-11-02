@@ -186,6 +186,43 @@ git push origin v0.1.0
 
 O SoundFont não fica no repositório por causa do tamanho: o Actions o obtém do pacote `fluid-soundfont-gm`. Para testar um pacote já pronto, rode o programa com `--self-test resultado.txt tests/data/video-teste.mp4`. No Windows, se o programa fechar logo ao abrir, o motivo fica em `%TEMP%\\freekaraoke-erro.txt`.
 
+## Licença
+
+Copyright © 2026 Anakinpendragon.
+
+O FreeKaraoke é software livre, distribuído sob a [GNU General Public License versão 3](LICENSE) (GPLv3). Quem distribuir o programa, modificado ou não, precisa manter esta licença e oferecer o código-fonte.
+
+### Bibliotecas e recursos utilizados
+
+Cada componente continua sob a sua própria licença. Os itens marcados como "pacotes" são distribuídos nos AppImages ou no pacote do Windows. As versões variam conforme a construção.
+
+| Componente | Uso | Licença | Onde |
+|---|---|---|---|
+| [Qt](https://www.qt.io/) e [PySide6](https://doc.qt.io/qtforpython/) (com Shiboken6) | Interface e multimídia | LGPLv3 (opção usada entre LGPLv3, GPLv2 e GPLv3) | Pacotes |
+| [FFmpeg](https://ffmpeg.org/) (incluído no Qt) | Vídeo de fundo | LGPLv2.1 ou posterior | Pacotes |
+| [FluidSynth](https://www.fluidsynth.org/) | Síntese MIDI | LGPLv2.1 ou posterior | Pacotes |
+| [FluidR3 GM](https://packages.debian.org/fluid-soundfont-gm) | SoundFont | MIT ([texto](soundfonts/FluidR3_GM.copyright.txt)) | Pacotes |
+| [Liberation Sans](https://github.com/liberationfonts/liberation-fonts) | Fonte da letra | SIL OFL 1.1 ([texto](fonts/LICENSE.txt)) | Pacotes |
+| [Python](https://www.python.org/) | Linguagem | PSF-2.0 | Pacotes |
+| [NumPy](https://numpy.org/) | Cálculo do nível do som | BSD-3-Clause, com partes 0BSD, MIT, Zlib e CC0 | Pacotes |
+| [mido](https://github.com/mido/mido) | Arquivos MIDI | MIT | Pacotes |
+| [music21](https://github.com/cuthbertLab/music21) | Leitura de MusicXML | BSD-3-Clause | Pacotes |
+| [chardet](https://github.com/chardet/chardet) | Dependência do music21 | 0BSD | Pacotes |
+| [joblib](https://github.com/joblib/joblib) | Dependência do music21 | BSD-3-Clause | Pacotes |
+| [jsonpickle](https://github.com/jsonpickle/jsonpickle) | Dependência do music21 | BSD-3-Clause | Pacotes |
+| [more-itertools](https://github.com/more-itertools/more-itertools) | Dependência do music21 | MIT | Pacotes |
+| [Requests](https://github.com/psf/requests) | Dependência do music21 | Apache-2.0 | Pacotes |
+| [webcolors](https://github.com/ubernostrum/webcolors) | Dependência do music21 | BSD-3-Clause | Pacotes |
+| [packaging](https://github.com/pypa/packaging) | Dependência | Apache-2.0 ou BSD-2-Clause | Pacotes |
+| [SDL3](https://www.libsdl.org/) | Dependência da FluidSynth | Zlib | Pacote do Windows |
+| [libsndfile](https://github.com/libsndfile/libsndfile) | Dependência da FluidSynth | LGPLv2.1 ou posterior | Pacotes |
+| Bibliotecas do Ubuntu 22.04 das quais a FluidSynth depende | Áudio e sistema | Várias; os avisos vão em `usr/share/doc/licencas` dentro do AppImage | AppImage |
+| [PyInstaller](https://pyinstaller.org/) | Construção do pacote do Windows | GPLv2 ou posterior, com exceção para o programa gerado | Só na construção |
+| [Flask](https://flask.palletsprojects.com/) | Página web do conversor | BSD-3-Clause | Só no código-fonte |
+| [pytest](https://pytest.org/) e [pytest-timeout](https://github.com/pytest-dev/pytest-timeout) | Testes | MIT | Só no código-fonte |
+
+O suporte ao formato `.st3` foi feito para compatibilidade com os arquivos do usuário, a partir da análise dos próprios arquivos e do carregador do RealOrche. O FreeKaraoke não tem relação com o RealOrche nem com seus autores.
+
 ## Testes
 
 ```bash

@@ -13,6 +13,8 @@ analysis = Analysis(
     pathex=[str(ROOT)],
     binaries=fluidsynth_dlls,
     datas=[
+        (str(ROOT / "LICENSE"), "."),
+        (str(ROOT / "README.md"), "."),
         (str(ROOT / "fonts"), "fonts"),
         (str(ROOT / "icons"), "icons"),
         (str(ROOT / "soundfonts" / "FluidR3_GM.sf2"), "soundfonts"),

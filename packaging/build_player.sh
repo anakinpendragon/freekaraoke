@@ -75,6 +75,16 @@ docker run --rm -v "$APPDIR/usr/lib:/out" "$LIBRARY_DISTRO" bash -euc '
             cp -L "$dependency" /out/fluid/
         fi
     done
+    # Keep the notices of each distributed library, as their licenses require.
+    mkdir -p /out/licencas
+    for file in /out/fluid/*; do
+        package=$(dpkg -S "*/$(basename "$file")" 2>/dev/null | head -1 | cut -d: -f1)
+        if [ -z "$package" ] || [ ! -f "/usr/share/doc/$package/copyright" ]; then
+            echo "Sem aviso de licença para $(basename "$file")" >&2
+            exit 1
+        fi
+        cp "/usr/share/doc/$package/copyright" "/out/licencas/$package.txt"
+    done
     for file in /out/fluid/*; do
         patchelf --set-rpath "\$ORIGIN" "$file"
     done
@@ -88,7 +98,7 @@ docker run --rm -v "$APPDIR/usr/lib:/out" "$LIBRARY_DISTRO" bash -euc '
             cp -L "$dependency" /out/qt-extra/
         fi
     done
-    chown -R '"$(id -u):$(id -g)"' /out/fluid /out/qt-extra
+    chown -R '"$(id -u):$(id -g)"' /out/fluid /out/qt-extra /out/licencas
 '
 
 APP="$APPDIR/usr/app"
@@ -96,6 +106,9 @@ mkdir -p "$APP/soundfonts"
 cp "$ROOT"/{player,background,catalog,conversor,kar,library,score,self_test,song,song_list_pdf,st3,st3_writer,synth,theme,tolerant_midi}.py "$APP/"
 cp -r "$ROOT/fonts" "$ROOT/icons" "$APP/"
 cp "$ROOT/soundfonts/FluidR3_GM.sf2" "$ROOT/soundfonts/FluidR3_GM.copyright.txt" "$APP/soundfonts/"
+cp "$ROOT/LICENSE" "$ROOT/README.md" "$APP/"
+mkdir -p "$APPDIR/usr/share/doc"
+mv "$APPDIR/usr/lib/licencas" "$APPDIR/usr/share/doc/licencas"
 
 rm -f "$APPDIR"/*.desktop "$APPDIR"/*.png "$APPDIR/.DirIcon"
 rm -f "$APPDIR/usr/share/applications"/*.desktop "$APPDIR/usr/share/metainfo"/*
