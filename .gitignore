@@ -1,0 +1,9 @@
+.venv/
+build/
+dist/
+soundfonts/*.sf2
+/*.kar
+/*.st3
+__pycache__/
+.pytest_cache/
+*.pyc

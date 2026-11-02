@@ -1,0 +1,151 @@
+name: Testes e pacotes
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+env:
+  FLUIDSYNTH_WINDOWS: "2.6.2"
+
+jobs:
+  soundfont:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obter o SoundFont do pacote do Ubuntu
+        run: |
+          sudo apt-get update -qq
+          apt-get download fluid-soundfont-gm
+          dpkg-deb -x fluid-soundfont-gm_*.deb extracted
+          mkdir soundfonts
+          cp -L extracted/usr/share/sounds/sf2/FluidR3_GM.sf2 soundfonts/
+          cp extracted/usr/share/doc/fluid-soundfont-gm/copyright soundfonts/FluidR3_GM.copyright.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soundfont
+          path: soundfonts/
+          compression-level: 0
+          retention-days: 1
+
+  tests:
+    needs: soundfont
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: soundfont
+          path: soundfonts/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependências
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libfluidsynth3 ffmpeg libegl1 libgl1 libxkbcommon0 \
+            libdbus-1-3 libfontconfig1 libpulse0 libgssapi-krb5-2
+          pip install -q -r requirements.txt
+      - name: Rodar os testes
+        run: python -m pytest -q tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  linux:
+    needs: soundfont
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: soundfont
+          path: soundfonts/
+      - name: Gerar os AppImages
+        run: |
+          bash packaging/build_player.sh
+          bash packaging/build_conversor.sh
+      - name: Testar em distribuições limpas
+        run: |
+          status=0
+          for target in "ubuntu:22.04 apt" "ubuntu:24.04 apt" "debian:12 apt" "fedora:41 dnf" "archlinux:latest pacman"; do
+            set -- $target
+            echo "::group::$1"
+            if ! docker run --rm -v "$PWD/dist:/dist:ro" -v "$PWD/tests/data:/video:ro" \
+                -v "$PWD/packaging:/packaging:ro" "$1" bash /packaging/test_appimage_in_container.sh "$2" | tee result.txt; then
+              status=1
+            fi
+            grep -E '^FALHA|Error' result.txt | sed "s|^|::error title=$1::|" || true
+            echo "::endgroup::"
+          done
+          exit $status
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            dist/freekaraoke-x86_64.AppImage
+            dist/conversor-x86_64.AppImage
+          compression-level: 0
+
+  windows:
+    needs: soundfont
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: soundfont
+          path: soundfonts/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependências
+        run: |
+          pip install -q "mido>=1.3,<2" packaging "numpy>=2,<3" "PySide6-Essentials>=6.8,<7" "PySide6-Addons>=6.8,<7" chardet joblib jsonpickle more-itertools requests webcolors pyinstaller
+          pip install -q --no-deps "music21>=9.1,<10"
+      - name: Baixar a FluidSynth
+        run: |
+          $name = "fluidsynth-v$env:FLUIDSYNTH_WINDOWS-win10-x64-cpp11"
+          Invoke-WebRequest "https://github.com/FluidSynth/fluidsynth/releases/download/v$env:FLUIDSYNTH_WINDOWS/$name.zip" -OutFile fluidsynth.zip
+          Expand-Archive fluidsynth.zip -DestinationPath build\unpacked
+          New-Item -ItemType Directory -Force build\fluidsynth | Out-Null
+          Move-Item "build\unpacked\$name\bin" build\fluidsynth\bin
+      - name: Gerar o programa
+        run: pyinstaller --noconfirm --distpath dist --workpath build\pyinstaller packaging\freekaraoke.spec
+      - name: Rodar o autoteste do programa
+        run: |
+          $process = Start-Process -FilePath dist\FreeKaraoke\FreeKaraoke.exe -ArgumentList "--self-test", "$PWD\result.txt", "$PWD\tests\data\video-teste.mp4" -PassThru
+          if (-not $process.WaitForExit(240000)) { $process.Kill(); Write-Output "::error::O programa não terminou em 4 minutos" }
+          $crash = Join-Path $env:TEMP "freekaraoke-erro.txt"
+          if (Test-Path $crash) { Get-Content $crash | ForEach-Object { Write-Output "::error title=Falha ao iniciar::$_" } }
+          if (-not (Test-Path result.txt)) { Write-Output "::error::O autoteste não gerou resultado"; exit 1 }
+          Get-Content result.txt -Encoding UTF8
+          Get-Content result.txt -Encoding UTF8 | Select-String -Pattern '^FALHA|Error' | ForEach-Object { Write-Output "::error title=Autoteste::$_" }
+          Get-Content result.txt -Encoding UTF8 | Select-String -Pattern '^(ok|RESULTADO)' | ForEach-Object { Write-Output "::notice title=Autoteste::$_" }
+          if (-not (Select-String -Path result.txt -Pattern 'RESULTADO: tudo certo' -Encoding UTF8)) { exit 1 }
+      - name: Compactar
+        run: Compress-Archive -Path dist\FreeKaraoke -DestinationPath dist\FreeKaraoke-windows-x64.zip -CompressionLevel Optimal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/FreeKaraoke-windows-x64.zip
+          compression-level: 0
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [tests, linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+      - name: Publicar a Release
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes \
+            files/linux/freekaraoke-x86_64.AppImage \
+            files/linux/conversor-x86_64.AppImage \
+            files/windows/FreeKaraoke-windows-x64.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
