@@ -184,7 +184,7 @@ O SoundFont não fica no repositório por causa do tamanho: o Actions o obtém d
 ## Testes
 
 ```bash
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests --timeout=120
 ```
 
 ## Licenças

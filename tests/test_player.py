@@ -384,6 +384,17 @@ def scan_folder(folder):
 
 
 @pytest.fixture(autouse=True)
+def no_waiting_for_a_click(monkeypatch):
+    """An unexpected error dialog would wait forever for a click: make it fail the test."""
+    from PySide6.QtWidgets import QMessageBox
+
+    def unexpected_dialog(_parent, _title, message, *_args):
+        raise AssertionError(f"Janela de erro inesperada: {message}")
+
+    monkeypatch.setattr(QMessageBox, "warning", unexpected_dialog)
+
+
+@pytest.fixture(autouse=True)
 def clean_config():
     """Each test starts with no saved settings, song numbers or PDF."""
     from player import open_settings
@@ -1615,15 +1626,15 @@ def test_music_envelope_can_be_cancelled():
 
 
 @needs_soundfont
-def test_window_gives_the_scorer_the_music_level_in_the_background(tmp_path, qapp):
-    import time
-
+def test_window_gives_the_scorer_the_music_level_in_the_background(tmp_path, qapp, monkeypatch):
+    import player
     from player import PlayerWindow
 
     path = write(kar_midi(["\\Can", "tar"], notes=16), tmp_path / "x.kar")
+    # The window behaves as in real use, but needs no sound card: build machines have none.
+    real_synth = player.Synth
+    monkeypatch.setattr(player, "Synth", lambda font, realtime, gain: real_synth(font, realtime=False, gain=gain))
     window = PlayerWindow(soundfont, realtime=True, gain=0.0)
-    window._score_action.setChecked(False)  # No microphone is opened in this test.
-    window._score_action.setChecked(True)
     window._microphone.start = lambda: True
     try:
         assert window.open_song(str(path))

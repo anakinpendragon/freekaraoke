@@ -178,12 +178,17 @@ def run(result_path: str, video_path: str | None) -> int:
         meter.level_measured.connect(levels.append)
         meter.consume(array.array("h", [3276] * 800).tobytes())
         assert len(levels) == 1
+        if sys.platform != "win32":
+            # Qt can crash when opening one on a machine with a partial audio install, such
+            # as a Linux build container. Windows is where the format handling needs checking.
+            return "abertura não testada neste sistema"
         started = meter.start()  # A build machine may have no microphone at all.
         meter.stop()
         return "microfone encontrado" if started else "sem microfone nesta máquina"
 
     def linux_plugins():
-        if not sys.platform.startswith("linux"):
+        # Only the AppImage sets this; running from source uses whatever the machine has.
+        if not os.environ.get("KARAOKE_FLUIDSYNTH_LIB"):
             return "não se aplica"
         import PySide6
 
