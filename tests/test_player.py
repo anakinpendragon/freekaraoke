@@ -3058,10 +3058,10 @@ def test_record_button_is_a_red_circle_with_only_an_icon(window, qapp):
 @needs_soundfont
 def test_pressing_record_while_a_song_plays_starts_recording_with_the_microphone_on(tmp_path, window, qapp, recordings, monkeypatch):
     write(kar_midi(["\\la", "la"], notes=64), tmp_path / "a.kar")
-    window._realtime = True  # Only the microphone behaves as in real use here.
-    started = []
-    monkeypatch.setattr(window._microphone, "start", lambda: (started.append(1), True)[1])
     window.open_song(str(tmp_path / "a.kar"))
+    # From here the microphone behaves as in real use; opening the song needed no sound card.
+    window._realtime = True
+    monkeypatch.setattr(window._microphone, "start", lambda: True)
     window._record_button.setChecked(True)
     assert window._record_button.isChecked()
     assert window._lyrics.is_showing_recording()
