@@ -20,6 +20,7 @@ from PySide6.QtCore import (
     QPointF,
     QRectF,
     QSettings,
+    QStandardPaths,
     Qt,
     QTimer,
     QTranslator,
@@ -68,16 +69,18 @@ from PySide6.QtWidgets import (
 from background import BackgroundRotator
 from catalog import OTHERS, CatalogEntry, singer_key, singer_names
 from library import Library
+from recorder import OUTPUT_SUFFIX, Recording, RecordingSaver, recording_path
 from score import MicrophoneMeter, MusicEnvelopeWorker, RhythmScorer
 from song import MUSICXML_SUFFIXES, LineState, Song, SongError, is_prepared_score, load_song
 from song_list_pdf import export_song_list
 from synth import Synth, SynthError, find_soundfont
-from theme import DARK, LIGHT, THEMES, media_icon, style_sheet
+from theme import DARK, LIGHT, RECORD_RED, THEMES, media_icon, style_sheet
 
 REFRESH_MS = 16
 MESSAGE_MS = 5000
 TYPED_NUMBER_MS = 10000
 SCORE_DISPLAY_MS = 8000
+MIN_RECORDING_SECONDS = 1.0
 INTERFACE_FONT_MIN = 8
 INTERFACE_FONT_MAX = 32
 FALLBACK_INTERFACE_FONT = 10
@@ -99,6 +102,8 @@ BACKGROUND = QColor("#10131a")
 UNSUNG = QColor("#ffffff")
 SUNG = QColor("#ffd400")
 OUTLINE = QColor("#000000")
+RECORDING_MARK = QColor("#dc3545")
+RECORDING_MARK_RADIUS = 12
 # Keep lyrics readable over any image: a soft dark halo, then a drop shadow.
 HALO_LAYERS = ((0.26, 45), (0.16, 70))  # (width relative to the font size, opacity)
 SHADOW_OFFSET = 0.05
@@ -164,6 +169,7 @@ class LyricWidget(QWidget):
         self._notice = ""
         self._score: int | None = None
         self._sprites: dict[tuple, LineSprite] = {}
+        self._recording = False
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumHeight(160)
 
@@ -186,6 +192,13 @@ class LyricWidget(QWidget):
     def clear_background(self) -> None:
         self._background = None
         self.update()
+
+    def set_recording(self, recording: bool) -> None:
+        self._recording = recording
+        self.update()
+
+    def is_showing_recording(self) -> bool:
+        return self._recording
 
     def set_score(self, score: int | None) -> None:
         self._score = score
@@ -221,6 +234,14 @@ class LyricWidget(QWidget):
             self._paint_line(painter, self._lower, lower_baseline)
         if self._notice:
             self._paint_notice(painter)
+        if self._recording:
+            self._paint_recording_mark(painter)
+
+    def _paint_recording_mark(self, painter: QPainter) -> None:
+        radius = RECORDING_MARK_RADIUS
+        painter.setPen(QPen(OUTLINE, 2))
+        painter.setBrush(RECORDING_MARK)
+        painter.drawEllipse(QPointF(self.width() - radius * 2, radius * 2), radius, radius)
 
     @staticmethod
     def _paint_shadow(painter: QPainter, path: QPainterPath, font_size: float) -> None:
@@ -405,7 +426,14 @@ class QueueList(QListWidget):
         return row + 1 if position.y() > self.visualItemRect(item).center().y() else row
 
 
+def recordings_folder() -> Path:
+    music = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.MusicLocation)
+    return Path(music or Path.home()) / "FreeKaraoke"
+
+
 class PlayerWindow(QMainWindow):
+    recording_saved = Signal(str, str)  # Path and, if it failed, the reason.
+
     def __init__(self, soundfont: str | None = None, *, realtime: bool = True, gain: float | None = None):
         super().__init__()
         self.setWindowTitle(tr("Videokê"))
@@ -429,6 +457,8 @@ class PlayerWindow(QMainWindow):
         self._typed_number = ""
         self._scorer: RhythmScorer | None = None
         self._gain_at_song_start = 1.0
+        self._recording: Recording | None = None
+        self._savers: list[RecordingSaver] = []
         self._theme_name = DARK
         # Read before any style sheet applies: this is the size the desktop asks for.
         system_size = QApplication.font().pointSize()
@@ -452,6 +482,8 @@ class PlayerWindow(QMainWindow):
 
         self._microphone = MicrophoneMeter(self)
         self._microphone.level_measured.connect(self.on_microphone_level)
+        self._microphone.samples_captured.connect(self.on_microphone_samples)
+        self.recording_saved.connect(self._on_recording_saved)
 
         self._notice_timer = QTimer(self)
         self._notice_timer.setSingleShot(True)
@@ -497,6 +529,12 @@ class PlayerWindow(QMainWindow):
         self._volume_label = QLabel()
         self._volume_label.setMinimumWidth(40)
         self._volume_slider.valueChanged.connect(self.set_volume)
+        self._record_button = QPushButton()
+        self._record_button.setObjectName("recordButton")
+        self._record_button.setCheckable(True)
+        self._record_button.setAccessibleName(tr("Gravar a sua voz com a música (R)"))
+        self._update_record_button()
+        self._record_button.toggled.connect(self.set_recording_enabled)
         self._theme_button = QPushButton()
         self._theme_button.clicked.connect(self.toggle_theme)
         volume_title = QLabel("Volume")
@@ -507,7 +545,7 @@ class PlayerWindow(QMainWindow):
         position_row.addWidget(self._time)
 
         button_row = QHBoxLayout()
-        for widget in (self._songs_button, self._play_button, self._stop_button, self._next_button):
+        for widget in (self._songs_button, self._play_button, self._stop_button, self._next_button, self._record_button):
             button_row.addWidget(widget)
         button_row.addStretch(1)
         self._button_row = button_row
@@ -543,6 +581,7 @@ class PlayerWindow(QMainWindow):
         central.setLayout(stage)
         self.setCentralWidget(central)
 
+        QShortcut(QKeySequence(Qt.Key.Key_R), self, self._record_button.toggle)
         QShortcut(QKeySequence(Qt.Key.Key_F2), self, self.show_song_window)
         QShortcut(QKeySequence(Qt.Key.Key_F5), self, self.refresh_song_folder)
         QShortcut(QKeySequence(Qt.Key.Key_F11), self, self.toggle_fullscreen)
@@ -667,6 +706,13 @@ class PlayerWindow(QMainWindow):
         self._score_action.setChecked(self._settings.value("score_enabled", "true") == "true")
         self._score_action.toggled.connect(self._on_score_option_toggled)
         options_menu.addAction(self._score_action)
+        self._guide_action = QAction(tr("Tocar a voz-guia"), self)
+        self._guide_action.setCheckable(True)
+        self._guide_action.setChecked(self._settings.value("guide_enabled", "true") == "true")
+        self._guide_action.toggled.connect(self._on_guide_toggled)
+        options_menu.addAction(self._guide_action)
+        options_menu.addSeparator()
+        self._add_action(options_menu, tr("Abrir pasta das gravações"), self.open_recordings_folder)
 
     def _add_action(self, menu, text, handler, shortcut=None) -> QAction:
         action = QAction(text, self)
@@ -940,12 +986,17 @@ class PlayerWindow(QMainWindow):
         synth = self._ensure_synth()
         if synth is None:
             return False
-        synth.load(song.midi_bytes)
+        if self._recording is not None:
+            synth.pause()  # The new song waits for the answer about the last one's recording.
+        self._finish_recording()
+        synth.load(song.playback_bytes(self._guide_action.isChecked()))
 
         self._dismiss_score()
         self._song = song
         self._scorer = RhythmScorer(song.timeline.syllables, song.ticks_per_beat)
         self._gain_at_song_start = self._current_gain()
+        self._guide_action.setEnabled(song.has_guide)
+        self._guide_action.setToolTip("" if song.has_guide else tr("Esta música não tem uma trilha de voz identificável."))
         if self._realtime and self._score_action.isChecked():
             self._start_envelope_worker(song)
         self._tempo_factor = 1.0
@@ -1029,7 +1080,10 @@ class PlayerWindow(QMainWindow):
         self._cancel_envelope_worker()
         if song.timeline.has_lyrics:
             self._envelope_worker = MusicEnvelopeWorker(
-                self._scorer, song.midi_bytes, self._soundfont_in_use, song.total_ticks
+                self._scorer,
+                song.playback_bytes(self._guide_action.isChecked()),
+                self._soundfont_in_use,
+                song.total_ticks,
             )
             self._envelope_worker.start()
 
@@ -1059,17 +1113,134 @@ class PlayerWindow(QMainWindow):
         self._timer.start()
         self._background.start()
         self._start_microphone()
+        if self._record_button.isChecked() and self._recording is None:
+            self._begin_recording()
         self._update_controls()
+
+    def set_recording_enabled(self, enabled: bool) -> None:
+        """While on, each song played is recorded to its own file."""
+        self._update_record_button()
+        if not enabled:
+            self._finish_recording()
+            if not self._score_action.isChecked():
+                self._microphone.stop()
+            return
+        if self._synth and self._synth.is_playing:
+            self._start_microphone()
+            if self._record_button.isChecked():
+                self._begin_recording()
+        else:
+            self._notify(tr("A gravação começa quando a música tocar."))
+
+    def _update_record_button(self) -> None:
+        recording = self._record_button.isChecked()
+        self._record_button.setIcon(media_icon("record", "#ffffff" if recording else RECORD_RED))
+        self._record_button.setToolTip(tr("Parar a gravação (R)") if recording else tr("Gravar a sua voz com a música (R)"))
+
+    def _begin_recording(self) -> None:
+        song = self._song
+        self._recording = Recording(song.title, song.ticks_per_beat, self._soundfont_in_use)
+        self._lyrics.set_recording(True)
+
+    def on_microphone_samples(self, samples, rate: int) -> None:
+        if self._recording is not None and self._synth and self._synth.is_playing:
+            self._recording.add(
+                samples,
+                rate,
+                self._synth.tick,
+                self._current_gain(),
+                self._tempo_factor,
+                self._song.playback_bytes(self._guide_action.isChecked()),
+            )
+
+    def _finish_recording(self) -> None:
+        self._offer_to_save(self._detach_recording())
+
+    def _detach_recording(self) -> Recording | None:
+        recording, self._recording = self._recording, None
+        self._lyrics.set_recording(False)
+        return recording
+
+    def _offer_to_save(self, recording: Recording | None) -> None:
+        """Ask where to save. Giving up asks again first: the performance cannot be redone."""
+        if recording is None:
+            return
+        if recording.seconds < MIN_RECORDING_SECONDS:
+            recording.discard()
+            return
+        target = self._ask_recording_target(recording.title)
+        if target is None:
+            recording.discard()
+            return
+        self._settings.setValue("recordings_folder", str(target.parent))
+        self._notify(tr("Salvando a gravação..."))
+        saver = RecordingSaver(recording, target, lambda path, error: self.recording_saved.emit(str(path), error))
+        self._savers.append(saver)
+        saver.start()
+
+    def _ask_recording_target(self, title: str) -> Path | None:
+        saving = [saver.target for saver in self._savers if saver.is_alive()]
+        suggestion = recording_path(self._recordings_folder(), title, taken=saving)
+        while True:
+            chosen, _ = QFileDialog.getSaveFileName(
+                self, tr("Salvar a gravação"), str(suggestion), tr("Gravação Opus (*.opus)")
+            )
+            if chosen:
+                path = Path(chosen)
+                return path if path.suffix.lower() == OUTPUT_SUFFIX else path.with_name(path.name + OUTPUT_SUFFIX)
+            answer = QMessageBox.question(
+                self,
+                tr("Descartar a gravação?"),
+                tr("Se não salvar, a gravação será perdida. Descartar mesmo assim?"),
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer == QMessageBox.StandardButton.Discard:
+                return None
+
+    def _recordings_folder(self) -> Path:
+        saved = self._settings.value("recordings_folder")
+        return Path(saved) if saved and Path(saved).is_dir() else recordings_folder()
+
+    def _on_recording_saved(self, path: str, error: str) -> None:
+        self._savers = [saver for saver in self._savers if saver.is_alive()]
+        if error:
+            self._show_error(tr("Não consegui salvar a gravação: {0}").format(error))
+        else:
+            self._notify(tr("Gravação salva: {0}").format(path))
+
+    def open_recordings_folder(self) -> None:
+        folder = self._recordings_folder()
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def _on_guide_toggled(self, enabled: bool) -> None:
+        self._settings.setValue("guide_enabled", "true" if enabled else "false")
+        song = self._song
+        if not song or not self._synth or not song.has_guide:
+            return
+        was_playing = self._synth.is_playing
+        tick = self._synth.tick
+        self._synth.load(song.playback_bytes(enabled))
+        if was_playing:
+            self._synth.play()
+            self._synth.set_tempo_factor(self._tempo_factor)
+        self._synth.seek(tick)
+        if self._realtime and self._score_action.isChecked():
+            self._start_envelope_worker(song)
 
     def _start_microphone(self) -> None:
         # Offline rendering has no real clock for the microphone to follow.
-        if self._realtime and self._score_action.isChecked() and not self._microphone.start():
-            self._notify(tr("Nenhum microfone disponível: a música tocará sem nota."))
+        wanted = self._score_action.isChecked() or self._record_button.isChecked()
+        if self._realtime and wanted and not self._microphone.start():
+            self._notify(tr("Nenhum microfone disponível: a música tocará sem nota nem gravação."))
+            self._record_button.setChecked(False)
 
     def _on_score_option_toggled(self, enabled: bool) -> None:
         self._settings.setValue("score_enabled", "true" if enabled else "false")
         if not enabled:
-            self._microphone.stop()
+            if not self._record_button.isChecked():
+                self._microphone.stop()
             self._scorer = None
         elif self._synth and self._synth.is_playing:
             self._start_microphone()
@@ -1107,6 +1278,7 @@ class PlayerWindow(QMainWindow):
 
     def stop(self) -> None:
         self._dismiss_score()
+        recording = self._detach_recording()
         self._active = False
         self._timer.stop()
         self._background.stop()
@@ -1118,6 +1290,7 @@ class PlayerWindow(QMainWindow):
         self._slider.setValue(0)
         self._show_position(0)
         self._update_controls()
+        self._offer_to_save(recording)
 
     def change_tempo(self, step: float) -> None:
         if not self._song or not self._synth:
@@ -1166,13 +1339,16 @@ class PlayerWindow(QMainWindow):
 
     def _on_song_finished(self) -> None:
         score = self._scorer.result() if self._scorer is not None else None
+        recording = self._detach_recording()
         self.stop()
-        if score is None:
-            if self._queue:
-                self.play_next()
-            return
-        self._lyrics.set_score(score)
-        self._score_timer.start()
+        if score is not None:
+            self._lyrics.set_score(score)
+        # The score stays up behind the question, and its time only starts after the answer.
+        self._offer_to_save(recording)
+        if score is not None:
+            self._score_timer.start()
+        elif self._queue:
+            self.play_next()
 
     def _finish_score_display(self) -> None:
         self._dismiss_score()
@@ -1269,8 +1445,11 @@ class PlayerWindow(QMainWindow):
         self._timer.stop()
         self._score_timer.stop()
         self._microphone.stop()
+        self._finish_recording()
         self._background.stop()
         self._song_window.close()
+        for saver in self._savers:
+            saver.join()
         if self._envelope_worker is not None:
             worker = self._envelope_worker
             self._cancel_envelope_worker()

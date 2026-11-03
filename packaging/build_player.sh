@@ -32,7 +32,7 @@ SITE="$APPDIR/opt/python3.12/lib/python3.12/site-packages"
 
 "$APPDIR/AppRun" -m pip install --quiet --no-warn-script-location \
     "mido>=1.3,<2" packaging "numpy>=2,<3" "PySide6-Essentials>=6.8,<7" "PySide6-Addons>=6.8,<7" \
-    chardet joblib jsonpickle more-itertools requests webcolors
+    chardet joblib jsonpickle more-itertools requests webcolors "soundfile>=0.13,<1"
 # music21 reads MusicXML. Without its dependencies, because matplotlib is only for its graphs.
 "$APPDIR/AppRun" -m pip install --quiet --no-warn-script-location --no-deps "music21>=9.1,<10"
 for data in corpus musicxml/lilypondTestSuite; do
@@ -104,7 +104,7 @@ docker run --rm -v "$APPDIR/usr/lib:/out" "$LIBRARY_DISTRO" bash -euc '
 
 APP="$APPDIR/usr/app"
 mkdir -p "$APP/soundfonts"
-cp "$ROOT"/{player,background,catalog,conversor,i18n,kar,library,score,self_test,song,song_list_pdf,st3,st3_writer,synth,theme,tolerant_midi}.py "$APP/"
+cp "$ROOT"/{player,background,catalog,conversor,i18n,kar,library,recorder,score,self_test,song,song_list_pdf,st3,st3_writer,synth,theme,tolerant_midi}.py "$APP/"
 cp -r "$ROOT/fonts" "$ROOT/icons" "$APP/"
 cp "$ROOT/soundfonts/FluidR3_GM.sf2" "$ROOT/soundfonts/FluidR3_GM.copyright.txt" "$APP/soundfonts/"
 cp "$ROOT/LICENSE" "$ROOT/README.md" "$APP/"

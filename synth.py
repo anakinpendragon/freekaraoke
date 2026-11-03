@@ -104,17 +104,21 @@ def _load_library():
 class Synth:
     """Owns one synthesizer and the current song's player."""
 
-    def __init__(self, soundfont: str, *, realtime: bool = True, gain: float = DEFAULT_GAIN):
+    def __init__(
+        self, soundfont: str, *, realtime: bool = True, gain: float = DEFAULT_GAIN, sample_rate: float = SAMPLE_RATE
+    ):
         self._lib = _load_library()
         self._player = None
         self._driver = None
         self._midi_buffer = None
         self._paused = False
+        self._pending_seek: int | None = None
+        self._gain = gain
         self.audio_driver_name = ""
 
         self._settings = self._lib.new_fluid_settings()
         self._lib.fluid_settings_setnum(self._settings, b"synth.gain", gain)
-        self._lib.fluid_settings_setnum(self._settings, b"synth.sample-rate", SAMPLE_RATE)
+        self._lib.fluid_settings_setnum(self._settings, b"synth.sample-rate", sample_rate)
         self._synth = self._lib.new_fluid_synth(self._settings)
         if not self._synth:
             self.close()
@@ -159,12 +163,20 @@ class Synth:
             self._lib.fluid_synth_all_sounds_off(self._synth, -1)
 
     def seek(self, tick: int) -> None:
+        # FluidSynth ignores a seek until it has read the file, which it does when playback
+        # first runs, so that one waits. Silence keeps the song's start from being heard.
+        if self._player and tick > 0 and self._raw_tick() == 0:
+            self._pending_seek = int(tick)
+            self._lib.fluid_synth_set_gain(self._synth, 0.0)
+            return
         if self._player:
             self._lib.fluid_player_seek(self._player, max(0, int(tick)))
             self._lib.fluid_synth_all_sounds_off(self._synth, -1)
 
     def set_gain(self, gain: float) -> None:
-        self._lib.fluid_synth_set_gain(self._synth, gain)
+        self._gain = gain
+        if self._pending_seek is None:
+            self._lib.fluid_synth_set_gain(self._synth, gain)
 
     def set_tempo_factor(self, factor: float) -> None:
         """Scale the song's own tempo: 1.0 is as written, 0.5 is half speed."""
@@ -173,6 +185,18 @@ class Synth:
 
     @property
     def tick(self) -> int:
+        raw = self._raw_tick()
+        if self._pending_seek is None:
+            return raw
+        target = self._pending_seek
+        if raw > 0:
+            self._pending_seek = None
+            self._lib.fluid_player_seek(self._player, target)
+            self._lib.fluid_synth_all_sounds_off(self._synth, -1)
+            self._lib.fluid_synth_set_gain(self._synth, self._gain)
+        return target
+
+    def _raw_tick(self) -> int:
         return self._lib.fluid_player_get_current_tick(self._player) if self._player else 0
 
     @property
@@ -198,6 +222,9 @@ class Synth:
             self._lib.fluid_player_join(self._player)
             self._lib.delete_fluid_player(self._player)
             self._lib.fluid_synth_all_sounds_off(self._synth, -1)
+        if self._pending_seek is not None and getattr(self, "_synth", None):
+            self._lib.fluid_synth_set_gain(self._synth, self._gain)
+        self._pending_seek = None
         self._player = None
         self._midi_buffer = None
         self._paused = False

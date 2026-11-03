@@ -8,12 +8,14 @@ import threading
 
 import numpy as np
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
+from PySide6.QtMultimedia import QAudio, QAudioFormat, QAudioSource, QMediaDevices
 
 from synth import Synth, SynthError
 
 FRAME_MS = 50
 SAMPLE_RATE = 16000
+# High enough for a recording of the voice; the level for the score comes from any rate.
+CAPTURE_RATE = 48000
 # NumPy type and full-scale value of each sample format a microphone may deliver.
 SAMPLE_FORMATS = {
     QAudioFormat.SampleFormat.Int16: ("<i2", 32768.0),
@@ -197,9 +199,10 @@ class MusicEnvelopeWorker(threading.Thread):
 
 
 class MicrophoneMeter(QObject):
-    """Reports the microphone's level only. Nothing is recorded or stored."""
+    """Reports the microphone's level and hands over its audio; this class stores nothing."""
 
     level_measured = Signal(float)
+    samples_captured = Signal(object, int)  # Mono audio from -1 to 1, and its sample rate.
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -211,14 +214,19 @@ class MicrophoneMeter(QObject):
 
     def _configure(self, sample_format, rate: int, channels: int) -> None:
         self._dtype, self._full_scale = SAMPLE_FORMATS[sample_format]
+        self._rate = rate
+        self._channels = channels
         self._frame_bytes = rate * FRAME_MS // 1000 * channels * np.dtype(self._dtype).itemsize
 
     def start(self) -> bool:
         """Returns False when there is no usable microphone."""
+        # Already listening, for the score: Qt refuses a second start on the same source.
+        if self._device is not None and self._source.state() != QAudio.State.StoppedState:
+            return True
         if self._source is None:
             device = QMediaDevices.defaultAudioInput()
             audio_format = QAudioFormat()
-            audio_format.setSampleRate(SAMPLE_RATE)
+            audio_format.setSampleRate(CAPTURE_RATE)
             audio_format.setChannelCount(1)
             audio_format.setSampleFormat(QAudioFormat.SampleFormat.Int16)
             if device.isNull():
@@ -256,6 +264,8 @@ class MicrophoneMeter(QObject):
             if self._frames_to_skip:
                 self._frames_to_skip -= 1
             else:
+                mono = frame.astype(np.float32).reshape(-1, self._channels).mean(axis=1) / self._full_scale
+                self.samples_captured.emit(mono, self._rate)
                 self.level_measured.emit(level_db(frame, self._full_scale))
 
 

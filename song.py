@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import mido
+import numpy as np
 
 from st3 import (
     SYNC_LINE_LOWER,
@@ -35,6 +36,13 @@ MAX_KAR_LINE_CHARS = 42
 # A track this many times longer than the typical one is corrupt data, not music.
 RUNAWAY_TRACK_FACTOR = 5
 DEFAULT_TEMPO = 500_000
+DRUM_CHANNEL = 9
+# How closely a part must follow the sung syllables to be taken for the guide voice,
+# from 0 to 1, with a lower bar when its name also says so.
+GUIDE_MATCH = 0.8
+GUIDE_MATCH_IF_NAMED = 0.5
+GUIDE_TOLERANCE_BEATS = 1 / 16
+GUIDE_NAME = re.compile(r"melod|vocal|\bvoz\b|\bvoice\b|\blead|canto|\bguia\b|solista|singer|cantor", re.IGNORECASE)
 # Bump when what a score turns into changes, so old prepared copies are not reused.
 SCORE_CACHE_VERSION = "1"
 
@@ -129,6 +137,7 @@ class Song:
     title: str
     singer: str
     midi_bytes: bytes
+    midi_bytes_without_guide: bytes | None
     ticks_per_beat: int
     total_ticks: int
     timeline: LyricTimeline
@@ -144,6 +153,13 @@ class Song:
     def tick_at_seconds(self, seconds: float) -> int:
         """Inverse of seconds_at, clamped to the song."""
         return bisect.bisect_left(range(self.total_ticks), seconds, key=self.seconds_at)
+
+    @property
+    def has_guide(self) -> bool:
+        return self.midi_bytes_without_guide is not None
+
+    def playback_bytes(self, with_guide: bool) -> bytes:
+        return self.midi_bytes if with_guide or not self.has_guide else self.midi_bytes_without_guide
 
     @property
     def total_seconds(self) -> float:
@@ -258,6 +274,59 @@ def _load_musicxml(path: Path) -> Song:
     return _build_song(path, score.midi, score.title, singer, lyrics, sync)
 
 
+def find_guide_part(midi: mido.MidiFile, syllables: list[SyncEvent]) -> tuple[int, int] | None:
+    """The (track, channel) playing the sung melody, or None if no part clearly does."""
+    if not syllables:
+        return None
+    sung = np.array(sorted(event.tick for event in syllables), dtype=float)
+    tolerance = midi.ticks_per_beat * GUIDE_TOLERANCE_BEATS
+    best = None
+    best_match = 0.0
+    for index, track in enumerate(midi.tracks):
+        name = next((message.name for message in track if message.type == "track_name"), "")
+        tick = 0
+        onsets: dict[int, list[int]] = {}
+        for message in track:
+            tick += message.time
+            if message.type == "note_on" and message.velocity and message.channel != DRUM_CHANNEL:
+                onsets.setdefault(message.channel, []).append(tick)
+        for channel, ticks in onsets.items():
+            notes = np.array(sorted(ticks), dtype=float)
+            found = _share_near(sung, notes, tolerance)
+            used = _share_near(notes, sung, tolerance)
+            match = 2 * found * used / (found + used) if found + used else 0.0
+            required = GUIDE_MATCH_IF_NAMED if GUIDE_NAME.search(name) else GUIDE_MATCH
+            if match >= required and match > best_match:
+                best = (index, channel)
+                best_match = match
+    return best
+
+
+def _share_near(values: np.ndarray, others: np.ndarray, tolerance: float) -> float:
+    positions = np.searchsorted(others, values)
+    before = np.abs(values - others[np.clip(positions - 1, 0, len(others) - 1)])
+    after = np.abs(values - others[np.clip(positions, 0, len(others) - 1)])
+    return float((np.minimum(before, after) <= tolerance).mean())
+
+
+def _without_part(midi: mido.MidiFile, part: tuple[int, int]) -> bytes:
+    index, channel = part
+    silent = mido.MidiFile(type=midi.type, ticks_per_beat=midi.ticks_per_beat, charset=midi.charset)
+    for number, track in enumerate(midi.tracks):
+        kept = mido.MidiTrack()
+        carried = 0
+        for message in track:
+            if number == index and message.type in ("note_on", "note_off") and message.channel == channel:
+                carried += message.time
+            else:
+                kept.append(message.copy(time=message.time + carried))
+                carried = 0
+        silent.tracks.append(kept)
+    buffer = io.BytesIO()
+    silent.save(file=buffer)
+    return buffer.getvalue()
+
+
 def _build_song(path, midi, title, singer, lyrics, sync) -> Song:
     _drop_runaway_tracks(midi)
     total_ticks = _last_note_tick(midi)
@@ -267,12 +336,14 @@ def _build_song(path, midi, title, singer, lyrics, sync) -> Song:
         midi.type = 1
     buffer = io.BytesIO()
     midi.save(file=buffer)
+    guide = find_guide_part(midi, [event for event in sync if event.kind == SYNC_SYLLABLE])
 
     song = Song(
         path=path,
         title=title or path.stem,
         singer=singer,
         midi_bytes=buffer.getvalue(),
+        midi_bytes_without_guide=_without_part(midi, guide) if guide else None,
         ticks_per_beat=midi.ticks_per_beat,
         total_ticks=total_ticks,
         timeline=LyricTimeline(lyrics, sync),

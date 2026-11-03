@@ -386,12 +386,14 @@ def scan_folder(folder):
 @pytest.fixture(autouse=True)
 def no_waiting_for_a_click(monkeypatch):
     """An unexpected error dialog would wait forever for a click: make it fail the test."""
-    from PySide6.QtWidgets import QMessageBox
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
 
     def unexpected_dialog(_parent, _title, message, *_args):
         raise AssertionError(f"Janela de erro inesperada: {message}")
 
     monkeypatch.setattr(QMessageBox, "warning", unexpected_dialog)
+    monkeypatch.setattr(QMessageBox, "question", unexpected_dialog)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", unexpected_dialog)
 
 
 @pytest.fixture(autouse=True)
@@ -2639,3 +2641,552 @@ library.sync({str(folder)!r})
 print(library.signature)
 """
     assert english_run(tmp_path, change).strip() != portuguese
+
+
+def guide_song_midi(notes=24):
+    """A verse with a melody following the lyrics and an accompaniment that does not."""
+    midi = mido.MidiFile(type=1, ticks_per_beat=TPB, charset="latin1")
+    words = mido.MidiTrack([mido.MetaMessage("text", text="@KMIDI KARAOKE FILE", time=0)])
+    for index in range(notes):
+        words.append(mido.MetaMessage("text", text=f" la{index}", time=0 if index == 0 else TPB))
+    melody = mido.MidiTrack()
+    for _ in range(notes):
+        melody.append(mido.Message("note_on", channel=3, note=72, velocity=100, time=0))
+        melody.append(mido.Message("note_off", channel=3, note=72, velocity=0, time=TPB))
+    accompaniment = mido.MidiTrack()
+    accompaniment.append(mido.Message("note_on", channel=0, note=40, velocity=100, time=TPB // 2))
+    accompaniment.append(mido.Message("note_off", channel=0, note=40, velocity=0, time=TPB))
+    for _ in range(notes // 2):
+        accompaniment.append(mido.Message("note_on", channel=0, note=40, velocity=100, time=TPB))
+        accompaniment.append(mido.Message("note_off", channel=0, note=40, velocity=0, time=TPB))
+    midi.tracks.extend([words, accompaniment, melody])
+    return midi
+
+
+def channels_playing(midi_data):
+    channels = set()
+    for track in mido.MidiFile(file=io.BytesIO(midi_data)).tracks:
+        channels.update(m.channel for m in track if m.type == "note_on" and m.velocity)
+    return channels
+
+
+def test_guide_voice_is_found_by_following_the_lyrics_and_removed(tmp_path):
+    song = load_song(write(guide_song_midi(), tmp_path / "x.kar"))
+
+    assert song.has_guide
+    assert channels_playing(song.playback_bytes(True)) == {0, 3}
+    assert channels_playing(song.playback_bytes(False)) == {0}
+
+
+def test_removing_the_guide_keeps_the_timing_of_everything_else(tmp_path):
+    song = load_song(write(guide_song_midi(), tmp_path / "x.kar"))
+
+    def accompaniment(data):
+        notes = []
+        for track in mido.MidiFile(file=io.BytesIO(data)).tracks:
+            tick = 0
+            for message in track:
+                tick += message.time
+                if message.type in ("note_on", "note_off") and message.channel == 0:
+                    notes.append((tick, message.type))
+        return notes
+
+    assert accompaniment(song.playback_bytes(False)) == accompaniment(song.playback_bytes(True))
+
+
+def test_no_guide_when_no_part_follows_the_lyrics(tmp_path):
+    midi = guide_song_midi()
+    midi.tracks.pop()  # Only the accompaniment remains.
+    song = load_song(write(midi, tmp_path / "x.kar"))
+    assert not song.has_guide
+    assert song.playback_bytes(False) == song.midi_bytes
+
+
+def test_named_guide_track_needs_less_agreement_than_an_unnamed_one(tmp_path):
+    from song import find_guide_part
+
+    def drifting(name):
+        midi = guide_song_midi()
+        melody = midi.tracks[2]
+        if name:
+            melody.insert(0, mido.MetaMessage("track_name", name=name, time=0))
+        # Every third note lands away from its syllable, leaving the others where they were.
+        messages = [m for m in melody if m.type in ("note_on", "note_off")]
+        for note_on, note_off in list(zip(messages[0::2], messages[1::2]))[1::3]:
+            note_on.time += TPB // 2
+            note_off.time -= TPB // 2
+        return midi
+
+    def syllables(midi):
+        from song import parse_kar_lyrics
+
+        return [e for e in parse_kar_lyrics(midi)[3] if e.kind == SYNC_SYLLABLE]
+
+    unnamed = drifting("")
+    named = drifting("Melody")
+    assert find_guide_part(unnamed, syllables(unnamed)) is None
+    assert find_guide_part(named, syllables(named)) == (2, 3)
+
+
+def test_drums_are_never_taken_for_the_guide(tmp_path):
+    midi = guide_song_midi()
+    for message in midi.tracks[2]:
+        if message.type in ("note_on", "note_off"):
+            message.channel = 9
+    assert not load_song(write(midi, tmp_path / "x.kar")).has_guide
+
+
+def test_score_voice_part_is_recognised_as_the_guide(tmp_path):
+    path = tmp_path / "song.musicxml"
+    path.write_text(score_xml(SUNG_NOTES * 4), encoding="utf-8")
+    assert load_song(path).has_guide
+
+
+@needs_soundfont
+def test_synth_seek_right_after_loading_waits_for_the_file_and_stays_silent_until_then():
+    synth = Synth(soundfont, realtime=False, gain=0.5)
+    try:
+        synth.load(midi_bytes(kar_midi(["\\la", "la"], notes=64)))
+        synth.play()
+        synth.seek(20 * TPB)
+        assert synth.tick == 20 * TPB
+        advance(synth, 0.1)
+        assert synth.tick == 20 * TPB  # This reading applies the jump.
+        advance(synth, 0.5)
+        assert synth.tick == pytest.approx(21 * TPB, abs=TPB)
+        assert peak(advance(synth, 0.5)) > 100
+    finally:
+        synth.close()
+
+
+@needs_soundfont
+def test_guide_option_changes_the_music_while_playing_and_keeps_the_position(tmp_path, window):
+    write(guide_song_midi(64), tmp_path / "x.kar")
+    assert window.open_song(str(tmp_path / "x.kar"))
+    assert window._guide_action.isEnabled()
+    advance(window._synth, 1.0)
+    before = window._synth.tick
+
+    loads = []
+    real_load = window._synth.load
+    window._synth.load = lambda data: (loads.append(data), real_load(data))
+    window._guide_action.setChecked(False)
+    advance(window._synth, 0.1)
+
+    assert loads == [window._song.midi_bytes_without_guide]
+    assert window._synth.is_playing
+    assert window._synth.tick == pytest.approx(before, abs=TPB)
+    assert window._settings.value("guide_enabled") == "false"
+
+
+@needs_soundfont
+def test_guide_choice_applies_to_the_next_song_and_is_disabled_without_a_guide(tmp_path, window):
+    write(guide_song_midi(), tmp_path / "a.kar")
+    midi = guide_song_midi()
+    midi.tracks.pop()
+    write(midi, tmp_path / "b.kar")
+    window._guide_action.setChecked(False)
+    loads = []
+    assert window.open_song(str(tmp_path / "a.kar"), autoplay=False)
+    assert window._guide_action.isEnabled()
+    assert channels_playing(window._song.playback_bytes(window._guide_action.isChecked())) == {0}
+    assert window.open_song(str(tmp_path / "b.kar"), autoplay=False)
+    assert not window._guide_action.isEnabled()
+    assert not loads
+
+
+def voice_block(seconds=0.05, rate=48000, amplitude=0.2):
+    import numpy as np
+
+    count = int(seconds * rate)
+    return (amplitude * np.sin(2 * np.pi * 440 * np.arange(count) / rate)).astype(np.float32)
+
+
+def read_audio(path):
+    import soundfile
+
+    return soundfile.read(path, always_2d=True)
+
+
+@needs_soundfont
+def test_recording_mixes_voice_and_music_into_opus(tmp_path):
+    import numpy as np
+    import soundfile
+    from recorder import OUTPUT_RATE, Recording
+
+    song = load_song(write(kar_midi(["\\la", "la"], notes=16), tmp_path / "x.kar"))
+    take = Recording("Teste", song.ticks_per_beat, soundfont)
+    block = voice_block()
+    tick_step = round(0.05 * 2 * TPB)
+    for index in range(100):  # Five seconds.
+        take.add(block, OUTPUT_RATE, index * tick_step, 0.5, 1.0, song.midi_bytes)
+    target = tmp_path / "saida.opus"
+    take.save(target)
+
+    audio, rate = read_audio(target)
+    info = soundfile.info(target)
+    assert (rate, info.channels, info.subtype, info.format) == (48000, 2, "OPUS", "OGG")
+    assert len(audio) == pytest.approx(5 * 48000, abs=4800)
+    spectrum = np.abs(np.fft.rfft(audio[48000:144000, 0]))
+    frequencies = np.fft.rfftfreq(96000, 1 / 48000)
+    # The voice's 440 Hz and the music's middle C (262 Hz) are both there.
+    assert spectrum[np.argmin(np.abs(frequencies - 440))] > spectrum.mean() * 20
+    assert spectrum[(frequencies > 255) & (frequencies < 268)].max() > spectrum.mean() * 5
+    assert np.abs(audio).max() <= 1.0
+
+
+@needs_soundfont
+def test_recording_of_voice_only_when_music_is_silent_starts_at_the_right_moment(tmp_path):
+    import numpy as np
+    from recorder import OUTPUT_RATE, VOICE_LEAD_SECONDS, Recording
+
+    song = load_song(write(kar_midi(["\\la", "la"], notes=4), tmp_path / "x.kar"))
+    take = Recording("Teste", song.ticks_per_beat, soundfont)
+    silence = np.zeros(2400, dtype=np.float32)
+    for index in range(60):
+        take.add(voice_block(amplitude=0.5) if index >= 30 else silence, OUTPUT_RATE, 0, 0.0, 1.0, song.midi_bytes)
+    target = tmp_path / "saida.opus"
+    take.save(target)
+
+    audio, rate = read_audio(target)
+    energy = np.abs(audio[:, 0])
+    first = np.argmax(energy > 0.1) / rate
+    assert first == pytest.approx(1.5 - VOICE_LEAD_SECONDS, abs=0.1)
+
+
+@needs_soundfont
+def test_recording_accepts_a_microphone_at_another_rate(tmp_path):
+    from recorder import Recording
+
+    song = load_song(write(kar_midi(["\\la", "la"], notes=8), tmp_path / "x.kar"))
+    take = Recording("Teste", song.ticks_per_beat, soundfont)
+    block = voice_block(rate=44100)
+    for index in range(40):
+        take.add(block, 44100, index * 10, 0.3, 1.0, song.midi_bytes)
+    target = tmp_path / "saida.opus"
+    take.save(target)
+    audio, rate = read_audio(target)
+    assert rate == 48000
+    assert len(audio) == pytest.approx(2 * 48000, abs=4800)
+
+
+def test_recording_limiter_keeps_peaks_in_range():
+    import numpy as np
+    from recorder import _limit
+
+    loud = np.array([[0.5, -0.5], [0.95, -1.8], [3.0, 0.1]], dtype=np.float32)
+    limited = _limit(loud)
+    assert limited[0].tolist() == [0.5, -0.5]
+    assert np.abs(limited).max() <= 1.0
+    assert limited[1, 1] < 0 and limited[2, 0] > limited[1, 0]
+
+
+def test_recording_names_are_valid_and_never_replace_a_file(tmp_path):
+    import datetime
+
+    from recorder import recording_path
+
+    moment = datetime.datetime(2026, 11, 2, 20, 30, 15)
+    first = recording_path(tmp_path, 'Canção: "a/b"?', moment)
+    assert first.name == "Canção a b 2026-11-02 20-30-15.opus"
+    first.write_bytes(b"x")
+    assert recording_path(tmp_path, 'Canção: "a/b"?', moment).name == "Canção a b 2026-11-02 20-30-15 2.opus"
+    assert recording_path(tmp_path, "...", moment).name.startswith("FreeKaraoke ")
+
+
+def test_too_short_recording_is_refused(tmp_path):
+    from recorder import Recording
+
+    take = Recording("Teste", TPB, "nao-usado.sf2")
+    with pytest.raises(ValueError):
+        take.save(tmp_path / "x.opus")
+    assert not (tmp_path / "x.opus").exists()
+
+
+@pytest.fixture
+def recordings(tmp_path, monkeypatch):
+    import player
+
+    folder = tmp_path / "gravacoes"
+    monkeypatch.setattr(player, "recordings_folder", lambda: folder)
+    # Answering the question with the name the program suggests.
+    monkeypatch.setattr(player.QFileDialog, "getSaveFileName", lambda _parent, _title, name, _filter: (name, ""))
+    return folder
+
+
+def wait_for_saved(window, qapp):
+    assert wait_until(qapp, lambda: not any(saver.is_alive() for saver in window._savers), 40)
+    qapp.processEvents()
+
+
+def feed_voice(window, blocks=40):
+    for _ in range(blocks):
+        window.on_microphone_samples(voice_block(), 48000)
+        advance(window._synth, 0.05)
+
+
+@needs_soundfont
+def test_record_button_saves_each_song_to_its_own_file_with_a_visible_mark(tmp_path, window, qapp, recordings):
+    write(kar_midi(["\\la", "la"], notes=64), tmp_path / "a.kar")
+    write(kar_midi(["\\la", "la"], notes=64), tmp_path / "b.kar")
+
+    window._record_button.setChecked(True)
+    assert not window._lyrics.is_showing_recording()
+    assert "começa" in window._song_message.text()
+
+    window.open_song(str(tmp_path / "a.kar"))
+    assert window._lyrics.is_showing_recording()
+    feed_voice(window)
+    window.open_song(str(tmp_path / "b.kar"))
+    assert window._lyrics.is_showing_recording()
+    feed_voice(window)
+    window.stop()
+    assert not window._lyrics.is_showing_recording()
+    wait_for_saved(window, qapp)
+
+    files = sorted(recordings.glob("*.opus"))
+    assert len(files) == 2
+    assert "Gravação salva" in window._song_message.text()
+    assert all(len(read_audio(path)[0]) > 48000 for path in files)
+    assert not list(recordings.glob(".*"))
+
+
+@needs_soundfont
+def test_turning_recording_off_mid_song_keeps_what_was_sung_and_song_keeps_playing(tmp_path, window, qapp, recordings):
+    write(kar_midi(["\\la", "la"], notes=64), tmp_path / "a.kar")
+    window.open_song(str(tmp_path / "a.kar"))
+    window._record_button.setChecked(True)
+    assert window._lyrics.is_showing_recording()
+    feed_voice(window)
+    window._record_button.setChecked(False)
+    assert not window._lyrics.is_showing_recording()
+    assert window._synth.is_playing
+    wait_for_saved(window, qapp)
+    assert len(list(recordings.glob("*.opus"))) == 1
+
+    window.on_microphone_samples(voice_block(), 48000)  # Off means nothing more is kept.
+    assert window._recording is None
+
+
+@needs_soundfont
+def test_nothing_is_recorded_unless_the_button_is_on(tmp_path, window, qapp, recordings):
+    write(kar_midi(["\\la", "la"], notes=16), tmp_path / "a.kar")
+    window.open_song(str(tmp_path / "a.kar"))
+    feed_voice(window, 30)
+    window.stop()
+    assert window._recording is None
+    assert not recordings.exists()
+
+
+@needs_soundfont
+def test_recording_too_short_leaves_no_file_and_paused_audio_is_not_kept(tmp_path, window, qapp, recordings):
+    write(kar_midi(["\\la", "la"], notes=16), tmp_path / "a.kar")
+    window._record_button.setChecked(True)
+    window.open_song(str(tmp_path / "a.kar"))
+    window.toggle_play()
+    window.on_microphone_samples(voice_block(), 48000)
+    assert window._recording.seconds == 0
+    window.stop()
+    wait_for_saved(window, qapp)
+    assert not recordings.exists()
+
+
+@needs_soundfont
+def test_closing_the_program_finishes_saving_the_recording(tmp_path, qapp, recordings):
+    from player import PlayerWindow
+
+    write(kar_midi(["\\la", "la"], notes=64), tmp_path / "a.kar")
+    window = PlayerWindow(soundfont, realtime=False)
+    window._record_button.setChecked(True)
+    window.open_song(str(tmp_path / "a.kar"))
+    feed_voice(window)
+    window.close()
+    assert len(list(recordings.glob("*.opus"))) == 1
+
+
+def test_microphone_meter_hands_over_mono_audio_scaled_to_one(qapp):
+    import numpy as np
+    from PySide6.QtMultimedia import QAudioFormat
+    from score import FRAME_MS, MicrophoneMeter
+
+    meter = MicrophoneMeter()
+    captured = []
+    meter.samples_captured.connect(lambda samples, rate: captured.append((samples, rate)))
+    meter._configure(QAudioFormat.SampleFormat.Int16, 48000, 2)
+    stereo = np.tile(np.array([16384, 0], dtype="<i2"), 48000 * FRAME_MS // 1000)
+    meter.consume(stereo.tobytes())
+    samples, rate = captured[0]
+    assert rate == 48000
+    assert len(samples) == 48000 * FRAME_MS // 1000
+    assert samples[0] == pytest.approx(0.25, abs=0.001)
+
+
+def test_microphone_already_listening_for_the_score_is_not_opened_again(qapp):
+    from PySide6.QtMultimedia import QAudio
+    from score import MicrophoneMeter
+
+    class RunningSource:
+        def state(self):
+            return QAudio.State.ActiveState
+
+        def start(self):
+            raise AssertionError("Qt refuses to start a source twice")
+
+    meter = MicrophoneMeter()
+    meter._source = RunningSource()
+    meter._device = object()
+    assert meter.start() is True
+    meter._device = None
+    meter._source = None
+
+
+def test_record_button_is_a_red_circle_with_only_an_icon(window, qapp):
+    from PySide6.QtGui import QColor
+
+    button = window._record_button
+    assert button.text() == ""
+    image = button.icon().pixmap(32, 32).toImage()
+    assert image.pixelColor(16, 16) == QColor("#dc3545")
+    assert image.pixelColor(1, 1).alpha() == 0
+    assert "Gravar" in button.toolTip()
+
+    button.setChecked(True)
+    assert button.icon().pixmap(32, 32).toImage().pixelColor(16, 16) == QColor("#ffffff")
+    assert "Parar" in button.toolTip()
+
+
+@needs_soundfont
+def test_pressing_record_while_a_song_plays_starts_recording_with_the_microphone_on(tmp_path, window, qapp, recordings, monkeypatch):
+    write(kar_midi(["\\la", "la"], notes=64), tmp_path / "a.kar")
+    window._realtime = True  # Only the microphone behaves as in real use here.
+    started = []
+    monkeypatch.setattr(window._microphone, "start", lambda: (started.append(1), True)[1])
+    window.open_song(str(tmp_path / "a.kar"))
+    window._record_button.setChecked(True)
+    assert window._record_button.isChecked()
+    assert window._lyrics.is_showing_recording()
+    assert "microfone" not in window.statusBar().currentMessage()
+    window._realtime = False
+    window._detach_recording().discard()
+
+
+def record_a_song(window, tmp_path):
+    write(kar_midi(["\\la", "la"], notes=64), tmp_path / "a.kar")
+    window._record_button.setChecked(True)
+    window.open_song(str(tmp_path / "a.kar"))
+    feed_voice(window)
+
+
+@needs_soundfont
+def test_asks_the_file_name_when_the_song_stops_and_uses_it(tmp_path, window, qapp, recordings, monkeypatch):
+    import player
+
+    asked = []
+    chosen = tmp_path / "escolhida"
+    chosen.mkdir()
+
+    def answer(_parent, title, suggested, file_filter):
+        asked.append((title, suggested, file_filter))
+        return str(chosen / "minha voz"), ""
+
+    monkeypatch.setattr(player.QFileDialog, "getSaveFileName", answer)
+    record_a_song(window, tmp_path)
+    assert asked == []  # Not before the end.
+    window.stop()
+    wait_for_saved(window, qapp)
+
+    title, suggested, file_filter = asked[0]
+    assert title == "Salvar a gravação"
+    assert suggested.endswith(".opus") and "Minha canção" in suggested
+    assert "*.opus" in file_filter
+    assert (chosen / "minha voz.opus").is_file()  # The extension is added when left out.
+    assert window._settings.value("recordings_folder") == str(chosen)
+    assert not recordings.exists()
+
+    assert str(window._recordings_folder()) == str(chosen)
+
+
+@needs_soundfont
+def test_cancelling_the_name_confirms_before_discarding(tmp_path, window, qapp, recordings, monkeypatch):
+    import player
+    from PySide6.QtWidgets import QMessageBox
+
+    # Cancelling twice, declining to discard each time, then choosing a name.
+    names = iter([("", ""), ("", ""), (str(tmp_path / "salva.opus"), "")])
+    monkeypatch.setattr(player.QFileDialog, "getSaveFileName", lambda *_args: next(names))
+    monkeypatch.setattr(player.QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Cancel)
+    record_a_song(window, tmp_path)
+    window.stop()
+    wait_for_saved(window, qapp)
+    assert (tmp_path / "salva.opus").is_file()
+
+
+@needs_soundfont
+def test_confirmed_discard_saves_nothing(tmp_path, window, qapp, recordings, monkeypatch):
+    import player
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(player.QFileDialog, "getSaveFileName", lambda *_args: ("", ""))
+    monkeypatch.setattr(player.QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Discard)
+    record_a_song(window, tmp_path)
+    window.stop()
+    assert window._savers == []
+    assert not recordings.exists()
+
+
+@needs_soundfont
+def test_at_the_end_of_a_song_the_score_and_next_song_wait_for_the_answer(tmp_path, window, qapp, recordings, monkeypatch):
+    import player
+
+    folder = song_folder(tmp_path, ["a.kar", "b.kar"])
+    window.set_song_folder(str(folder))
+    window.add_to_queue(window._catalog[0])
+    window.add_to_queue(window._catalog[1])
+    window._record_button.setChecked(True)
+    window.play_queue()
+    feed_voice(window, 30)
+
+    moments = []
+
+    def answer(_parent, _title, suggested, _filter):
+        moments.append((window._lyrics.score(), window._score_timer.isActive(), window._song.path.stem))
+        return suggested, ""
+
+    monkeypatch.setattr(player.QFileDialog, "getSaveFileName", answer)
+    for syllable in window._song.timeline.syllables:
+        for offset in range(0, 40):
+            window._scorer.add_frame(syllable.tick + offset, True)
+    for frame in range(30):
+        window._scorer.add_frame(100_000 + frame, False)
+    advance(window._synth, 8.0)
+    window._refresh()
+
+    assert moments == [(100, False, "a")]  # Shown behind the question, its time not yet running.
+    assert window._score_timer.isActive()
+    assert window._song.path.stem == "a"
+    wait_for_saved(window, qapp)
+    window._score_timer.stop()
+    window._score_timer.timeout.emit()
+    assert window._song.path.stem == "b"
+    window._record_button.setChecked(False)
+    window.stop()
+
+
+@needs_soundfont
+def test_next_song_waits_for_the_answer_about_the_last_recording(tmp_path, window, qapp, recordings, monkeypatch):
+    import player
+
+    write(kar_midi(["\\b", "la"], notes=8), tmp_path / "b.kar")
+    record_a_song(window, tmp_path)
+    moments = []
+
+    def answer(_parent, _title, suggested, _filter):
+        moments.append((window._song.path.stem, window._synth.is_playing))
+        return suggested, ""
+
+    monkeypatch.setattr(player.QFileDialog, "getSaveFileName", answer)
+    window.open_song(str(tmp_path / "b.kar"), autoplay=False)
+    assert moments == [("a", False)]
+    assert window._song.path.stem == "b"
+    wait_for_saved(window, qapp)
+    window._record_button.setChecked(False)

@@ -92,7 +92,17 @@ A lista em PDF, com número, música e cantor, é gerada sozinha no diretório d
 
 Ao terminar a música, a nota de 0 a 100 fica 8 segundos na tela, e depois começa a próxima da fila. `Espaço` ou **Tocar** encerra a espera antes. A nota mede só o ritmo: sobe quando a voz soa nos trechos de cantar e cai com sílabas sem voz ou voz fora de hora. A afinação não conta.
 
-O player usa o microfone padrão do sistema e só mede o volume; nada é gravado. Música parada ou com a maior parte pulada não recebe nota, e **Opções → Dar nota pelo microfone** desliga o recurso. A música que as caixas devolvem ao microfone é descontada: o player calcula o volume de cada trecho da música e só conta como voz o que passar disso. Para a nota sair justa, a voz precisa soar mais alta que as caixas no microfone.
+Para a nota, o player usa o microfone padrão do sistema e só mede o volume; nada é gravado, a menos que você ligue a gravação. Música parada ou com a maior parte pulada não recebe nota, e **Opções → Dar nota pelo microfone** desliga o recurso. A música que as caixas devolvem ao microfone é descontada: o player calcula o volume de cada trecho da música e só conta como voz o que passar disso. Para a nota sair justa, a voz precisa soar mais alta que as caixas no microfone.
+
+### Gravação
+
+O botão com o círculo vermelho (ou a tecla `R`) grava a sua voz junto com a música, e um ponto vermelho aparece na tela. Enquanto ele estiver ligado, cada música tocada é gravada. Ao terminar, o programa pergunta o nome do arquivo, sugerindo a pasta `FreeKaraoke`, dentro da pasta de música do sistema, ou a última usada; se você cancelar, ele confirma antes de descartar. **Opções → Abrir pasta das gravações** abre esse local. O formato é [Opus](https://opus-codec.org/) em contêiner Ogg (`.opus`), aberto e livre de royalties.
+
+Só o microfone é captado ao vivo. Depois, a música é gerada de novo seguindo o que aconteceu (posição, volume e tempo), então o som dela sai limpo. Para evitar que a música das caixas entre no microfone e soe como eco, prefira fones de ouvido.
+
+### Voz-guia
+
+Muitas músicas têm uma trilha que toca a melodia da voz. **Opções → Tocar a voz-guia** liga ou desliga essa trilha, inclusive com a música tocando. Os arquivos não têm um campo padrão para isso, então o player identifica a trilha que acompanha as sílabas da letra, com ajuda do nome dela. Quando nenhuma trilha acompanha com clareza, a opção fica desativada.
 
 ### Volume e tema
 
@@ -127,6 +137,8 @@ Chaves do `freekaraoke.ini`:
 | `interface_font_size` | Tamanho da letra dos menus; sem essa chave, segue o sistema |
 | `theme` | Tema: `dark` ou `light` |
 | `score_enabled` | Se a nota pelo microfone está ligada |
+| `guide_enabled` | Se a voz-guia toca |
+| `recordings_folder` | Última pasta usada para salvar uma gravação |
 | `soundfont` | SoundFont escolhido, quando o padrão não é encontrado |
 | `last_dir` | Última pasta usada para abrir um arquivo avulso |
 
@@ -218,6 +230,8 @@ Cada componente continua sob a sua própria licença; os textos da LGPL e da SDL
 | [jsonpickle](https://github.com/jsonpickle/jsonpickle) | Dependência do music21 | BSD-3-Clause | Pacotes |
 | [more-itertools](https://github.com/more-itertools/more-itertools) | Dependência do music21 | MIT | Pacotes |
 | [Requests](https://github.com/psf/requests) | Dependência do music21 | Apache-2.0 | Pacotes |
+| [python-soundfile](https://github.com/bastibe/python-soundfile) (com cffi e pycparser) | Gravação | BSD-3-Clause, MIT e BSD-3-Clause | Pacotes |
+| [Opus](https://opus-codec.org/) e [Ogg](https://xiph.org/ogg/) (incluídos no python-soundfile) | Formato da gravação | BSD-3-Clause | Pacotes |
 | [webcolors](https://github.com/ubernostrum/webcolors) | Dependência do music21 | BSD-3-Clause | Pacotes |
 | [packaging](https://github.com/pypa/packaging) | Dependência | Apache-2.0 ou BSD-2-Clause | Pacotes |
 | [SDL3](https://www.libsdl.org/) | Dependência da FluidSynth | Zlib | Pacote do Windows |

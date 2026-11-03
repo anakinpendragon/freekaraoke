@@ -46,7 +46,7 @@ version_info = VSVersionInfo(
     ],
 )
 # Each package's own license files travel with its metadata.
-licensed_packages = ["mido", "numpy", "music21", "chardet", "joblib", "jsonpickle", "more-itertools", "requests", "webcolors", "packaging", "PySide6-Essentials", "PySide6-Addons", "shiboken6", "certifi", "charset-normalizer", "idna", "urllib3"]
+licensed_packages = ["mido", "numpy", "music21", "chardet", "joblib", "jsonpickle", "more-itertools", "requests", "webcolors", "packaging", "PySide6-Essentials", "PySide6-Addons", "shiboken6", "certifi", "charset-normalizer", "idna", "urllib3", "soundfile", "cffi", "pycparser"]
 python_license = Path(sys.base_prefix) / "LICENSE.txt"
 
 analysis = Analysis(
@@ -67,7 +67,7 @@ analysis = Analysis(
         *collect_data_files("music21", excludes=["corpus/**", "musicxml/lilypondTestSuite/**"]),
     ],
     # music21 and these modules are imported only when a score is opened or a check runs.
-    hiddenimports=[*collect_submodules("music21"), "player", "self_test", "conversor", "st3_writer", "kar"],
+    hiddenimports=[*collect_submodules("music21"), "player", "self_test", "conversor", "st3_writer", "kar", "recorder", "soundfile", "_soundfile"],
     excludes=["matplotlib", "tkinter", "scipy", "IPython", "pytest", "flask"],
 )
 archive = PYZ(analysis.pure)

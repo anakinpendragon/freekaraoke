@@ -29,6 +29,7 @@ class Theme:
     chevron: str
 
 
+RECORD_RED = "#dc3545"
 PRIMARY = "#0d6efd"
 PRIMARY_HOVER = "#0b5ed7"
 PRIMARY_PRESSED = "#0a58ca"
@@ -61,6 +62,10 @@ def style_sheet(theme: Theme, font_points: float) -> str:
     QPushButton#primaryButton:disabled {{
         background-color: {theme.surface}; border-color: {theme.border}; color: {theme.disabled};
     }}
+
+    QPushButton#recordButton {{ padding: 6px 10px; }}
+    QPushButton#recordButton:checked {{ background-color: {RECORD_RED}; border-color: {RECORD_RED}; color: #ffffff; }}
+    QPushButton#recordButton:checked:hover {{ background-color: #bb2d3b; border-color: #b02a37; }}
 
     QLineEdit, QComboBox {{
         background-color: {theme.surface}; border: 1px solid {theme.border};
@@ -127,6 +132,8 @@ def media_icon(kind: str, colour: str) -> QIcon:
     elif kind == "pause":
         painter.drawRoundedRect(QRectF(8, 6, 6, 20), 1, 1)
         painter.drawRoundedRect(QRectF(18, 6, 6, 20), 1, 1)
+    elif kind == "record":
+        painter.drawEllipse(QRectF(6, 6, 20, 20))
     elif kind == "stop":
         painter.drawRoundedRect(QRectF(8, 8, 16, 16), 2, 2)
     elif kind == "next":

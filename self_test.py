@@ -119,6 +119,26 @@ def run(result_path: str, video_path: str | None) -> int:
         assert reader.parse_st3(data).lyrics
         return f"{len(data)} bytes"
 
+    def recording():
+        import numpy as np
+        import soundfile
+
+        import song
+        import synth
+        from recorder import OUTPUT_RATE, Recording
+
+        loaded = song.load_song(songs / "a.kar")
+        take = Recording("Teste", loaded.ticks_per_beat, synth.find_soundfont())
+        block = (0.2 * np.sin(np.arange(2400) * 0.1)).astype(np.float32)
+        for index in range(60):
+            take.add(block, OUTPUT_RATE, index * 10, 0.5, 1.0, loaded.midi_bytes)
+        target = work / "gravacao.opus"
+        take.save(target)
+        with soundfile.SoundFile(target) as result:
+            assert result.samplerate == OUTPUT_RATE and result.channels == 2 and result.subtype == "OPUS"
+            assert abs(result.frames - 60 * 2400) < 4800, result.frames
+        return f"{target.stat().st_size // 1024} KB em Opus"
+
     def fonts():
         from PySide6.QtGui import QFontDatabase
 
@@ -214,6 +234,7 @@ def run(result_path: str, video_path: str | None) -> int:
         ("janela, fila, tema, PDF e banco", window),
         ("partitura MusicXML com repetição", musicxml),
         ("conversão para .st3", st3),
+        ("gravação em Opus", recording),
         ("fonte incluída", fonts),
         ("imagem SVG do tema", svg),
         ("imagem de fundo", background_image),

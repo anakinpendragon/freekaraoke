@@ -7,3 +7,4 @@ soundfonts/*.sf2
 __pycache__/
 .pytest_cache/
 *.pyc
+claude.txt
