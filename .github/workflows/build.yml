@@ -56,8 +56,21 @@ jobs:
 
   linux:
     needs: soundfont
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            distros: "ubuntu:22.04 apt|ubuntu:24.04 apt|debian:12 apt|fedora:41 dnf|archlinux:latest pacman"
+          # Raspberry Pi 4 and newer, with a 64-bit system. Debian 12 and 13 are the bases
+          # of Raspberry Pi OS. Arch Linux has no ARM image.
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            distros: "ubuntu:22.04 apt|ubuntu:24.04 apt|debian:12 apt|debian:13 apt|fedora:41 dnf"
+    name: linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -71,7 +84,8 @@ jobs:
       - name: Testar em distribuições limpas
         run: |
           status=0
-          for target in "ubuntu:22.04 apt" "ubuntu:24.04 apt" "debian:12 apt" "fedora:41 dnf" "archlinux:latest pacman"; do
+          IFS='|' read -ra targets <<< "${{ matrix.distros }}"
+          for target in "${targets[@]}"; do
             set -- $target
             echo "::group::$1"
             if ! docker run --rm -v "$PWD/dist:/dist:ro" -v "$PWD/tests/data:/video:ro" \
@@ -84,10 +98,10 @@ jobs:
           exit $status
       - uses: actions/upload-artifact@v4
         with:
-          name: linux
+          name: linux-${{ matrix.arch }}
           path: |
-            dist/freekaraoke-x86_64.AppImage
-            dist/conversor-x86_64.AppImage
+            dist/freekaraoke-${{ matrix.arch }}.AppImage
+            dist/conversor-${{ matrix.arch }}.AppImage
           compression-level: 0
 
   windows:
@@ -190,8 +204,10 @@ jobs:
       - name: Publicar a Release
         run: |
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes \
-            files/linux/freekaraoke-x86_64.AppImage \
-            files/linux/conversor-x86_64.AppImage \
+            files/linux-x86_64/freekaraoke-x86_64.AppImage \
+            files/linux-x86_64/conversor-x86_64.AppImage \
+            files/linux-aarch64/freekaraoke-aarch64.AppImage \
+            files/linux-aarch64/conversor-aarch64.AppImage \
             files/windows/FreeKaraoke-windows-x64.msi \
             files/windows/FreeKaraoke-windows-x64.zip
         env:

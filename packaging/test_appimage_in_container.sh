@@ -25,7 +25,7 @@ case "$1" in
 esac
 cd /tmp
 APPIMAGE_EXTRACT_AND_RUN=1 HOME=/tmp QT_QPA_PLATFORM=offscreen timeout 240 \
-    /dist/freekaraoke-x86_64.AppImage --self-test /tmp/result.txt /video/video-teste.mp4 >/tmp/out.txt 2>&1
+    "/dist/freekaraoke-$(uname -m).AppImage" --self-test /tmp/result.txt /video/video-teste.mp4 >/tmp/out.txt 2>&1
 code=$?
 cat /tmp/result.txt 2>/dev/null || { echo "O programa não chegou a rodar (saída $code):"; tail -8 /tmp/out.txt; }
 exit "$code"

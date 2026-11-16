@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
-# Builds dist/freekaraoke-x86_64.AppImage. Needs network access and Docker.
+# Builds dist/freekaraoke-<arch>.AppImage for the machine's architecture (x86_64 or
+# aarch64). Needs network access and Docker.
 #
 # FluidSynth comes from Ubuntu 22.04 rather than from the build machine, so that the
 # AppImage runs on systems with glibc 2.35 or newer instead of only on recent ones.
 set -euo pipefail
 
+ARCH="$(uname -m)"
+case "$ARCH" in
+    x86_64) QT_VERSION=">=6.8,<7" ;;
+    # Later aarch64 wheels need glibc 2.39, newer than Raspberry Pi OS 12's 2.36.
+    aarch64) QT_VERSION="==6.8.0.2" ;;
+    *) echo "Arquitetura não suportada: $ARCH" >&2; exit 1 ;;
+esac
 PYTHON_RELEASE="python3.12"
-PYTHON_IMAGE="python3.12.15-cp312-cp312-manylinux_2_28_x86_64.AppImage"
+PYTHON_IMAGE="python3.12.15-cp312-cp312-manylinux_2_28_${ARCH}.AppImage"
 PYTHON_URL="https://github.com/niess/python-appimage/releases/download/${PYTHON_RELEASE}/${PYTHON_IMAGE}"
-TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage"
 LIBRARY_DISTRO="ubuntu:22.04"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD="$ROOT/build/player"
-OUTPUT="$ROOT/dist/freekaraoke-x86_64.AppImage"
+BUILD="$ROOT/build/player-$ARCH"
+OUTPUT="$ROOT/dist/freekaraoke-$ARCH.AppImage"
 mkdir -p "$BUILD" "$ROOT/dist"
 cd "$BUILD"
 
@@ -31,7 +39,7 @@ APPDIR="$BUILD/squashfs-root"
 SITE="$APPDIR/opt/python3.12/lib/python3.12/site-packages"
 
 "$APPDIR/AppRun" -m pip install --quiet --no-warn-script-location \
-    "mido>=1.3,<2" packaging "numpy>=2,<3" "PySide6-Essentials>=6.8,<7" "PySide6-Addons>=6.8,<7" \
+    "mido>=1.3,<2" packaging "numpy>=2,<3" "PySide6-Essentials$QT_VERSION" "PySide6-Addons$QT_VERSION" \
     chardet joblib jsonpickle more-itertools requests webcolors "soundfile>=0.13,<1"
 # music21 reads MusicXML. Without its dependencies, because matplotlib is only for its graphs.
 "$APPDIR/AppRun" -m pip install --quiet --no-warn-script-location --no-deps "music21>=9.1,<10"
@@ -140,5 +148,5 @@ chmod +x "$APPDIR/AppRun"
 chmod -R a+rX "$APPDIR"
 
 du -sh "$APPDIR"
-ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --no-appstream "$APPDIR" "$OUTPUT"
+ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --no-appstream "$APPDIR" "$OUTPUT"
 ls -lh "$OUTPUT"

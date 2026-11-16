@@ -8,24 +8,26 @@ Software de karaoke open source.
 
 Baixe a versão mais recente em [Releases](https://github.com/anakinpendragon/freekaraoke/releases):
 
-- **Linux:** `freekaraoke-x86_64.AppImage`. Dê permissão de execução e abra.
+- **Linux (PC):** `freekaraoke-x86_64.AppImage`. Dê permissão de execução e abra.
+- **Linux ARM 64 bits (Raspberry Pi 4, 400, 5 e outros):** `freekaraoke-aarch64.AppImage`. Precisa de um sistema de 64 bits, como o Raspberry Pi OS 64 bits; a versão de 32 bits não funciona.
 - **Windows 10 ou 11 (64 bits):** `FreeKaraoke-windows-x64.msi` instala o programa, com atalho no menu Iniciar e desinstalação pelo Windows. Sem instalar, extraia a pasta inteira de `FreeKaraoke-windows-x64.zip` e abra `FreeKaraoke.exe`. O programa ainda não tem assinatura digital, então o Windows pode avisar: clique em **Mais informações → Executar assim mesmo**.
-- **Conversor (Linux):** `conversor-x86_64.AppImage`.
+- **Conversor (Linux):** `conversor-x86_64.AppImage` ou `conversor-aarch64.AppImage`.
 
 Player de karaokê para Linux que toca arquivos `.st3`, `.kar`, `.mid` e MusicXML, com letra colorida sílaba por sílaba, nota por ritmo, fila de músicas e fundo de imagens ou vídeos.
 
 ## Sistemas compatíveis
 
-O AppImage do player precisa de um Linux x86-64 com **glibc 2.35 ou mais nova**:
+O AppImage do player precisa de um Linux x86-64 ou ARM de 64 bits (aarch64) com **glibc 2.35 ou mais nova**:
 
 | Distribuição | Versão mínima | Situação |
 |---|---|---|
 | Ubuntu | 22.04 | Testado no 22.04 e no 24.04 |
 | Debian | 12 | Testado no 12 |
 | Fedora | 41 | Testado no 41 |
-| Arch Linux | Atual | Testado |
+| Arch Linux | Atual | Testado (só x86-64) |
+| Raspberry Pi OS 64 bits | 12 (Bookworm) | Testado no Debian 12 e no 13 para ARM, que são a base dele; ainda não num Raspberry Pi de verdade |
 
-Distribuições mais antigas não são suportadas; o Debian 11, por exemplo, não funciona. Os testes foram feitos em contêineres, sem tela e sem som reais.
+Distribuições mais antigas não são suportadas; o Debian 11, por exemplo, não funciona. Os testes foram feitos em contêineres, sem tela e sem som reais. No ARM, o pacote usa o Qt 6.8.0, porque as versões mais novas do PySide6 para ARM exigem glibc 2.39.
 
 ## Idioma
 
@@ -167,7 +169,7 @@ O player abre MusicXML direto. O conversor serve para usar a música em outro pr
 
 A partitura precisa ter letra. O conversor não substitui um arquivo existente, a menos que você use `--sobrescrever`.
 
-Para gerar `dist/conversor-x86_64.AppImage` (baixa o Python empacotado e o `appimagetool` na primeira vez):
+Para gerar `dist/conversor-<arquitetura>.AppImage` para a arquitetura da máquina, `x86_64` ou `aarch64` (baixa o Python empacotado e o `appimagetool` na primeira vez):
 
 ```bash
 bash packaging/build_conversor.sh
@@ -185,7 +187,7 @@ Há também uma página web para a conversão, em `http://127.0.0.1:5000`:
 bash packaging/build_player.sh
 ```
 
-Gera `dist/freekaraoke-x86_64.AppImage` com Python, Qt, FluidSynth, SoundFont e fontes. A construção precisa de internet e de Docker: a FluidSynth vem do Ubuntu 22.04 para o pacote funcionar em sistemas com glibc 2.35 ou mais nova. Não funciona no Debian 11 nem em sistemas mais antigos que ele.
+Gera `dist/freekaraoke-<arquitetura>.AppImage`, para a arquitetura da máquina (`x86_64` ou `aarch64`), com Python, Qt, FluidSynth, SoundFont e fontes. A construção precisa de internet e de Docker: a FluidSynth vem do Ubuntu 22.04 para o pacote funcionar em sistemas com glibc 2.35 ou mais nova. Não funciona no Debian 11 nem em sistemas mais antigos que ele.
 
 O AppImage roda com o FUSE instalado. Sem o FUSE, use `APPIMAGE_EXTRACT_AND_RUN=1 ./freekaraoke-x86_64.AppImage`.
 
@@ -193,7 +195,7 @@ O AppImage roda com o FUSE instalado. Sem o FUSE, use `APPIMAGE_EXTRACT_AND_RUN=
 
 ## Versões automáticas
 
-O GitHub Actions (`.github/workflows/build.yml`) roda os testes e gera os pacotes a cada envio para a `main`. Eles ficam nos artefatos de cada execução. Os pacotes passam pelo autoteste do programa: o AppImage em cinco distribuições limpas, e o pacote do Windows numa máquina Windows.
+O GitHub Actions (`.github/workflows/build.yml`) roda os testes e gera os pacotes a cada envio para a `main`. Eles ficam nos artefatos de cada execução. Os pacotes passam pelo autoteste do programa: o AppImage em cinco distribuições limpas em cada arquitetura (o de ARM é gerado e testado numa máquina ARM do GitHub), e o pacote do Windows numa máquina Windows.
 
 Para publicar uma versão, crie uma etiqueta; o Actions cria a Release com os arquivos:
 

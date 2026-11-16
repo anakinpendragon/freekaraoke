@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
-# Builds dist/conversor-x86_64.AppImage. Needs network access on the first run.
+# Builds dist/conversor-<arch>.AppImage for the machine's architecture (x86_64 or
+# aarch64). Needs network access on the first run.
 set -euo pipefail
 
+ARCH="$(uname -m)"
+case "$ARCH" in
+    x86_64 | aarch64) ;;
+    *) echo "Arquitetura não suportada: $ARCH" >&2; exit 1 ;;
+esac
 PYTHON_RELEASE="python3.12"
-PYTHON_IMAGE="python3.12.15-cp312-cp312-manylinux_2_28_x86_64.AppImage"
+PYTHON_IMAGE="python3.12.15-cp312-cp312-manylinux_2_28_${ARCH}.AppImage"
 PYTHON_URL="https://github.com/niess/python-appimage/releases/download/${PYTHON_RELEASE}/${PYTHON_IMAGE}"
-TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD="$ROOT/build/conversor"
-OUTPUT="$ROOT/dist/conversor-x86_64.AppImage"
+BUILD="$ROOT/build/conversor-$ARCH"
+OUTPUT="$ROOT/dist/conversor-$ARCH.AppImage"
 mkdir -p "$BUILD" "$ROOT/dist"
 cd "$BUILD"
 
@@ -65,5 +71,5 @@ APPRUN
 chmod +x "$APPDIR/AppRun"
 chmod -R a+rX "$APPDIR"
 
-ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --no-appstream "$APPDIR" "$OUTPUT"
+ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --no-appstream "$APPDIR" "$OUTPUT"
 ls -lh "$OUTPUT"
